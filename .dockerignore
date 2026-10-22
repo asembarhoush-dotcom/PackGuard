@@ -1,4 +1,3 @@
-# Build output
 **/build/
 **/out/
 **/*.o
@@ -10,18 +9,15 @@
 **/*.exe
 **/*.pdb
 
-# Editors / IDEs
 **/.vs/
 **/.vscode/
 **/.idea/
 
-# Git and Docker files
 **/.git/
 **/.gitignore
 **/Dockerfile*
 **/.dockerignore
 
-# Not needed by the C scanner image (and never ship malware samples)
 data/
 experiments/
 docs/

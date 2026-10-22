@@ -1,0 +1,2 @@
+line 00001: the quick brown fox jumps over the lazy dog
+line 00002: the quick brown fox jumps over t
