@@ -1,10 +1,27 @@
-**/bin/
-**/obj/
+# Build output
+**/build/
+**/out/
+**/*.o
+**/*.obj
+**/*.a
+**/*.lib
+**/*.so
+**/*.dll
+**/*.exe
+**/*.pdb
+
+# Editors / IDEs
 **/.vs/
 **/.vscode/
-**/*.user
+**/.idea/
+
+# Git and Docker files
 **/.git/
 **/.gitignore
 **/Dockerfile*
 **/.dockerignore
+
+# Not needed by the C scanner image (and never ship malware samples)
 data/
+experiments/
+docs/
