@@ -1,0 +1,100 @@
+'use strict'
+
+// pino-debugger must be required at the entry point, before other modules
+const pinoDebug = require('../index.js')
+const pino = require('pino')
+const debug = require('../debug.js')
+
+// Initialize pino-debugger with a pino logger instance
+// All available options: auto, map, and skip
+const logger = pino({ level: 'debug' })
+pinoDebug(logger, {
+  // auto: automatically enable namespaces listed in map (default: true)
+  // If true: namespaces in map are automatically enabled for logging
+  // If false: only namespaces enabled via DEBUG env var will be logged
+  //   Namespaces in map will still use their mapped log levels when enabled
+  // Example with auto: false - set DEBUG=test:app,test:module before running
+  // auto: true,
+
+  // map: associate debug namespaces with pino log levels
+  // Supports wildcards (*) in namespace patterns
+  // Available pino log levels: trace, debug, info, warn, error, fatal
+  map: {
+    'test:app': 'info', // Specific namespace -> info level
+    'test:module': 'debug', // Specific namespace -> debug level
+    'test:error': 'error', // Error-level logging
+    'test:warn': 'warn', // Warning-level logging
+    'test:trace': 'trace', // Trace-level logging
+    'test:critical': 'fatal', // Fatal-level logging
+    'test:util:*': 'debug', // Wildcard pattern -> debug level
+    'test:sub:*': 'trace', // Another wildcard pattern
+    'test:*': 'trace' // Catch-all pattern (must be last due to precision sorting)
+  },
+  levels: ['info', 'warn', 'error', 'fatal', 'trace', 'debug'],
+  // format: specify the output format for debug-fmt
+  // Available formats: 'logfmt' (default), 'json', 'pretty'
+  format: 'logfmt',
+  // skip: array of namespaces to disable/skip
+  // Equivalent to prefixing namespaces with '-' in DEBUG env var
+  skip: [
+    'test:disabled', // This namespace will not be logged
+    'test:noisy:*' // Skip all noisy sub-namespaces
+  ]
+})
+
+// Test basic debug logging with all log levels
+console.log('\n=== Basic Debug Logging (All Levels) ===')
+const debugApp = debug('test:app')
+debugApp('This is an INFO level message from test:app')
+
+const debugModule = debug('test:module')
+debugModule('This is a DEBUG level message from test:module')
+
+const debugError = debug('test:error')
+debugError('This is an ERROR level message from test:error')
+
+const debugWarn = debug('test:warn')
+debugWarn('This is a WARN level message from test:warn')
+
+const debugTrace = debug('test:trace')
+debugTrace('This is a TRACE level message from test:trace')
+
+const debugFatal = debug('test:critical')
+debugFatal('This is a FATAL level message from test:critical')
+
+const debugOther = debug('test:other')
+debugOther('This is a TRACE level message from test:other (matches test:* pattern)')
+
+// Test wildcard patterns
+const debugUtil = debug('test:util:helper')
+debugUtil('This is a DEBUG level message from test:util:helper (matches test:util:*)')
+
+const debugSub = debug('test:sub:component')
+debugSub('This is a TRACE level message from test:sub:component (matches test:sub:*)')
+
+// Test skipped namespaces (should not log)
+const debugDisabled = debug('test:disabled')
+debugDisabled('This message should NOT appear (namespace is skipped)')
+
+const debugNoisy = debug('test:noisy:log')
+debugNoisy('This message should NOT appear (test:noisy:* is skipped)')
+
+// Test debug with format strings
+console.log('\n=== Debug with Format Strings ===')
+debugApp('User %s logged in with id %d', 'alice', 123)
+debugModule('Processing %j', { action: 'test', value: 42 })
+
+// Test debug.enabled
+console.log('\n=== Debug Enabled Check ===')
+console.log('test:app enabled:', debug('test:app').enabled)
+console.log('test:disabled enabled:', debug('test:disabled').enabled)
+
+// Test debug.extend
+console.log('\n=== Debug Extend ===')
+const debugAppSub = debugApp.extend('submodule')
+debugAppSub('This is a message from test:app:submodule')
+
+console.log('\n=== Test Complete ===')
+console.log('\nNote: To test auto: false, change auto to false and run:')
+console.log('  DEBUG=test:app,test:module node test.js')
+console.log('Only explicitly enabled namespaces will be logged.')

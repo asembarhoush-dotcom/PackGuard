@@ -1,0 +1,1 @@
+console.log("test package installed by hackerone.com/thruster")

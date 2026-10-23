@@ -1,0 +1,42 @@
+'use strict'
+
+// pino-debugger must be required at the entry point, before other modules
+const pinoDebug = require('./index.js')
+const pino = require('pino')
+
+// Initialize pino-debugger with a pino logger instance
+// All available options: auto, map, and skip
+const logger = pino({ level: 'debug' })
+pinoDebug(logger, {
+  // auto: automatically enable namespaces listed in map (default: true)
+  // If true: namespaces in map are automatically enabled for logging
+  // If false: only namespaces enabled via DEBUG env var will be logged
+  //   Namespaces in map will still use their mapped log levels when enabled
+  // Example with auto: false - set DEBUG=test:app,test:module before running
+  // auto: true,
+
+  // map: associate debug namespaces with pino log levels
+  // Supports wildcards (*) in namespace patterns
+  // Available pino log levels: trace, debug, info, warn, error, fatal
+  map: {
+    'test:app': 'info', // Specific namespace -> info level
+    'test:module': 'debug', // Specific namespace -> debug level
+    'test:error': 'error', // Error-level logging
+    'test:warn': 'warn', // Warning-level logging
+    'test:trace': 'trace', // Trace-level logging
+    'test:critical': 'fatal', // Fatal-level logging
+    'test:util:*': 'debug', // Wildcard pattern -> debug level
+    'test:sub:*': 'trace', // Another wildcard pattern
+    'test:*': 'trace' // Catch-all pattern (must be last due to precision sorting)
+  },
+  levels: ['info', 'warn', 'error', 'fatal', 'trace', 'debug'],
+  // format: specify the output format for debug-fmt
+  // Available formats: 'logfmt' (default), 'json', 'pretty'
+  format: 'logfmt',
+  // skip: array of namespaces to disable/skip
+  // Equivalent to prefixing namespaces with '-' in DEBUG env var
+  skip: [
+    'test:disabled', // This namespace will not be logged
+    'test:noisy:*' // Skip all noisy sub-namespaces
+  ]
+})

@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});const e=require("zod"),o=e.z.object({email:e.z.email().optional(),documentationUrl:e.z.url().optional(),disableAccountLink:e.z.boolean().optional(),disableChangeFeedLink:e.z.boolean().optional()}).strict();exports.SidenavFooterMenuSchema=o;

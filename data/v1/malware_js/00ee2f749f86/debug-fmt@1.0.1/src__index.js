@@ -1,0 +1,89 @@
+'use strict'
+
+const origDebug = require('debug-glitz')
+
+const timeSpan = require('@kikobeats/time-span')
+
+const defaultEncode = require('./encode')
+const defaultDurationFormat = require('pretty-ms')
+
+const LEVELS = ['info', 'warn', 'error']
+
+const setupFormatArgs = (colors, prefixFn) => {
+  if (!colors) {
+    origDebug.formatArgs = function formatArgs (args) {
+      const customPrefix = prefixFn
+        ? prefixFn(this.namespace, this.color)
+        : this.namespace + ' '
+      args[0] = customPrefix + args[0].replace(/\n/g, `\n${customPrefix}`)
+    }
+  } else {
+    origDebug.formatArgs = function formatArgs (args) {
+      const colorCode = `\u001B[3${this.color < 8 ? this.color : `8;5;${this.color}`}`
+      const customPrefix = prefixFn
+        ? prefixFn(this.namespace, this.color)
+        : `  ${colorCode};1m${this.namespace} \u001B[0m`
+      args[0] = customPrefix + args[0].replace(/\n/g, `\n${customPrefix}`)
+    }
+  }
+}
+
+// Initialize with default colors setting
+setupFormatArgs(process.env.DEBUG_COLORS !== 'false', null)
+
+const createDebug = require('./lazy')(origDebug)
+
+const createLogger = (log, encodeFn) =>
+  (...args) =>
+    log(
+      args.reduce((result, arg, index) => {
+        const encoded = typeof arg === 'string' ? arg : encodeFn(arg)
+        if (!encoded) return result
+        return result + (index > 0 ? ' ' : '') + encoded
+      }, '')
+    )
+
+module.exports = (env, options = {}) => {
+  const {
+    levels = LEVELS,
+    encode: encodeFn = defaultEncode,
+    colors = process.env.DEBUG_COLORS !== 'false',
+    durationFormat = defaultDurationFormat,
+    prefix: prefixFn
+  } = options
+
+  // Override formatArgs if colors or prefix options are provided
+  if (Object.prototype.hasOwnProperty.call(options, 'colors') || prefixFn) {
+    setupFormatArgs(colors, prefixFn)
+  }
+
+  // Create duration time span with custom format
+  const createDurationSpan = timeSpan({ format: durationFormat })
+
+  const debug = createLogger(createDebug(env), encodeFn)
+  origDebug.enable(levels.slice(-2).join(','))
+  levels.forEach(level => {
+    debug[level] = createLogger(createDebug(`${env}:${level}`), encodeFn)
+  })
+
+  debug.duration = (...args) => {
+    const duration = createDurationSpan()
+
+    const create =
+      type =>
+        (...opts) => {
+          ;(type ? debug[type] : debug)(...args, ...opts, {
+            duration: duration()
+          })
+          return true
+        }
+
+    const fn = create()
+    fn.error = create('error')
+    fn.info = create('info')
+
+    return fn
+  }
+
+  return debug
+}

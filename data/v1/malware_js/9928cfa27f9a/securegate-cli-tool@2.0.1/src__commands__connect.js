@@ -1,0 +1,102 @@
+/**
+ * securegate connect — Create a new provider connection
+ */
+
+const chalk = require('chalk');
+const inquirer = require('inquirer');
+const ora = require('ora');
+const api = require('../api');
+
+// Provider registry (mirrors lib/providers.ts)
+const PROVIDERS = [
+    { value: 'openai', name: 'OpenAI — GPT-4o, GPT-4.1, o3, DALL·E', placeholder: 'sk-...' },
+    { value: 'anthropic', name: 'Anthropic — Claude 4, Claude 3.5 Sonnet', placeholder: 'sk-ant-...' },
+    { value: 'google', name: 'Google AI — Gemini 2.5 Pro, Flash', placeholder: 'AIza...' },
+    { value: 'azure', name: 'Azure OpenAI — GPT-4o via Azure', placeholder: 'Your Azure API key' },
+    { value: 'groq', name: 'Groq — Ultra-fast LPU inference', placeholder: 'gsk_...' },
+    { value: 'together', name: 'Together AI — Llama, Qwen, DeepSeek', placeholder: 'Your key' },
+    { value: 'fireworks', name: 'Fireworks AI — Fast serverless inference', placeholder: 'fw_...' },
+    { value: 'perplexity', name: 'Perplexity — Sonar models + web search', placeholder: 'pplx-...' },
+    { value: 'mistral', name: 'Mistral AI — Mistral Large, Codestral', placeholder: 'Your key' },
+    { value: 'deepseek', name: 'DeepSeek — V3, R1 reasoning', placeholder: 'sk-...' },
+    { value: 'cohere', name: 'Cohere — Command R+, Embed', placeholder: 'Your key' },
+    { value: 'replicate', name: 'Replicate — Open-source models', placeholder: 'r8_...' },
+    { value: 'bedrock', name: 'AWS Bedrock — Managed AI on AWS', placeholder: 'Your key' },
+    { value: 'huggingface', name: 'Hugging Face — 200k+ models', placeholder: 'hf_...' },
+    { value: 'custom', name: 'Custom / OpenAI-Compatible — vLLM, LM Studio, Ollama', placeholder: 'Your key' },
+];
+
+async function connectCommand() {
+    console.log();
+    console.log(chalk.cyan.bold('🔗 Connect a Provider'));
+    console.log(chalk.dim('━'.repeat(50)));
+    console.log();
+
+    const answers = await inquirer.prompt([
+        {
+            type: 'list',
+            name: 'provider',
+            message: 'Select your AI provider:',
+            choices: PROVIDERS,
+            pageSize: 15,
+        },
+    ]);
+
+    const selected = PROVIDERS.find(p => p.value === answers.provider);
+    const followUp = [
+        {
+            type: 'password',
+            name: 'apiKey',
+            message: `Enter your ${selected.name.split(' — ')[0]} API key:`,
+            mask: '•',
+            validate: (v) => v.length > 5 ? true : 'API key seems too short',
+        },
+    ];
+
+    // Custom provider needs base URL
+    if (answers.provider === 'custom') {
+        followUp.push({
+            type: 'input',
+            name: 'baseUrl',
+            message: 'Base URL (e.g., http://localhost:11434/v1):',
+            validate: (v) => v.startsWith('http') ? true : 'Must start with http:// or https://',
+        });
+        followUp.push({
+            type: 'input',
+            name: 'customName',
+            message: 'Connection name (optional):',
+            default: 'custom-endpoint',
+        });
+    }
+
+    const details = await inquirer.prompt(followUp);
+
+    const spinner = ora('Encrypting & storing your key...').start();
+
+    try {
+        const res = await api.createConnection({
+            provider: answers.provider,
+            apiKey: details.apiKey,
+            customName: details.customName,
+            baseUrl: details.baseUrl,
+        });
+
+        if (res.status !== 200 && res.status !== 201) {
+            throw new Error(res.data?.error || `Server returned ${res.status}`);
+        }
+
+        spinner.succeed(chalk.green('Connection created!'));
+        console.log();
+        console.log(chalk.dim('  Connection ID: ') + chalk.white.bold(res.data.connection_id));
+        console.log(chalk.dim('  Provider:      ') + chalk.white(answers.provider));
+        console.log();
+        console.log(chalk.yellow('  Next step: Generate a security key'));
+        console.log(chalk.dim(`  Run: ${chalk.cyan('securegate keys create')}`));
+        console.log();
+    } catch (err) {
+        spinner.fail(chalk.red(`Failed: ${err.message}`));
+        process.exitCode = 1;
+    }
+}
+
+module.exports = connectCommand;
