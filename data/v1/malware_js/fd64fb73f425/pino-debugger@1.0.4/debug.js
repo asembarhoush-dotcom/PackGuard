@@ -1,0 +1,55 @@
+'use strict'
+
+const util = require('util')
+const debugFmt = require('debug-fmt')
+
+module.exports = debug
+
+function debug (namespace) {
+  const pinoDebug = require('./index.js')
+
+  if (!pinoDebug.logger) {
+    throw Error('debug called before pino-debugger initialized, ' +
+   'register pino-debugger at the top of your entry point')
+  }
+
+  const logger = pinoDebug.logger.child({ ns: namespace })
+  const log = Array.from(pinoDebug.map.keys()).map(function (rx) {
+    return rx.test(namespace) && logger[pinoDebug.map.get(rx)]
+  }).filter(Boolean)[0] || logger.debug
+
+  function disabled () {}
+  disabled.enabled = false
+
+  function enabled () {
+    const message = util.format.apply(util, arguments) // this is how debug.js formats arguments
+    return log.apply(logger, [message])
+  }
+  enabled.enabled = true
+
+  const fn = debug.enabled(namespace) ? enabled : disabled
+  fn.extend = function (subNamespace, delimiter) {
+    return debug(namespace + (delimiter || ':') + subNamespace)
+  }
+
+  fn.namespace = namespace
+
+  return fn
+}
+
+// Use debug-fmt's enabled function if available, otherwise check environment
+debug.enabled = function (namespace) {
+  if (debugFmt.enabled) {
+    return debugFmt.enabled(namespace)
+  }
+  // Fallback to basic DEBUG environment variable check
+  const namespaces = process.env.DEBUG
+  if (!namespaces) return false
+  const patterns = namespaces.split(/[\s,]+/)
+  return patterns.some(pattern => {
+    if (pattern === '*') return true
+    if (pattern.startsWith('-')) return false
+    const regex = new RegExp('^' + pattern.replace(/[\\^$+?.()|[\]{}]/g, '\\$&').replace(/\*/g, '.*?') + '$')
+    return regex.test(namespace)
+  })
+}

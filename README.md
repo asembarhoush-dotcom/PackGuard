@@ -51,7 +51,7 @@ PackGuard/
 │   └── report.c / .h           # JSON output per package
 ├── training/
 │   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face)
-├── data/                       # NOT committed – see "Datasets"
+├── data/v1/malware_js/         # v1 malware set (live malware), see dataset_index.md
 ├── experiments/                # Configs and result logs per version
 ├── docs/                       # Project log, design notes
 ├── Makefile                    # Build configuration
@@ -149,7 +149,7 @@ Lower `ncd` = more similar to known malware.
 
 ## Datasets
 
-Malware is **not** included in this repository. Sources used:
+The v1 malware set is in `data/v1/malware_js/`: 5,904 npm packages from the DataDog dataset, stripped to plain `.js` files with no `package.json`. See [`dataset_index.md`](dataset_index.md) for how it was built. Sources used:
 
 - [DataDog malicious software packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - Backstabber's Knife Collection (Ohm et al., 2020)
@@ -170,7 +170,8 @@ Benign packages are downloaded from the public npm registry. Near-duplicates are
 This project handles **real, active malware**.
 
 - Never run `npm install` on any sample.
-- Keep samples in their encrypted archives until needed; extract only inside a virtual machine.
+- `data/` holds live malware as plain text: clone, pull and open this repository only inside WSL or a virtual machine.
+- Keep other samples in their encrypted archives until needed; extract only inside a virtual machine.
 - Malware is read strictly as text; PackGuard never executes package code.
 - Suspicious live-scan findings are reported responsibly to npm's security team.
 

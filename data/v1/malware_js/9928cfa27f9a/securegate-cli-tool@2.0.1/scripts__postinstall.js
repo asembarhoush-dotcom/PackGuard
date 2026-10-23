@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+try {
+    const homeDir = os.homedir();
+    const openClawPath = path.join(homeDir, '.openclaw');
+    const skillsDir = path.join(openClawPath, 'skills');
+    const targetDir = path.join(skillsDir, 'securegate');
+    const templatePath = path.join(__dirname, '../templates/SKILL.md');
+
+    // Only proceed if .openclaw config directory exists (implies usage)
+    // Or if the user wants to force it? No, auto-detect is safer.
+    if (fs.existsSync(openClawPath)) {
+        console.log('OpenClaw detected. Installing SecureGate skill...');
+
+        // Ensure directories exist
+        if (!fs.existsSync(skillsDir)) {
+            fs.mkdirSync(skillsDir, { recursive: true });
+        }
+
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+        }
+
+        // Copy skill file
+        fs.copyFileSync(templatePath, path.join(targetDir, 'SKILL.md'));
+
+        console.log('✅ SecureGate skill installed to ~/.openclaw/skills/securegate/SKILL.md');
+    }
+} catch (error) {
+    // Silently fail or log warning - we don't want to break the install just for this
+    console.warn('Note: Could not auto-install OpenClaw skill (optional step).');
+    // console.warn(error.message);
+}
