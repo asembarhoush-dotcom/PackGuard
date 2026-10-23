@@ -40,8 +40,10 @@ typedef struct {
 
 ## Dataset
 
-- Malware is never stored in the repository. `dataset_index.md` records where every dataset lives, how it was filtered and what is still missing; update it whenever a dataset changes.
-- The v1 malware set is in WSL Ubuntu at `~/packguard-data/v1/malware_js/`: 5,904 DataDog npm `malicious_intent` packages, stripped to read-only `.js` files with no `package.json`.
+- `dataset_index.md` records where every dataset lives, how it was filtered and what is still missing; update it whenever a dataset changes.
+- The v1 malware set is committed in `data/v1/malware_js/`: 5,904 DataDog npm `malicious_intent` packages, stripped to plain `.js` files with no `package.json`. These are live malware.
+- Check out, pull or edit `data/` only from a clone inside WSL. On Windows, antivirus quarantines the files and many paths exceed 260 characters.
+- `data/` is stored byte for byte (`-text` in `.gitattributes`) so line-ending conversion never changes NCD results.
 - v1 uses static ratios: at most 3 packages per code shape and at most 3 versions per package name, earliest published first. Only sample zips of 1 MiB or less were used.
 - v1 goes for speed with the fewest features and static ratios; selectors and tuned ratios come in later versions, judged on accuracy vs time.
 - Handle malware only inside WSL, decrypt archives in memory, and never run `node`, `npm` or Windows Script Host on a sample.

@@ -1,13 +1,13 @@
 # Dataset index
 
-Where the PackGuard datasets live. Malware is never stored in this repository.
+Where the PackGuard datasets live.
 
 ## v1 malware set
 
 | | |
 |---|---|
-| Location | WSL Ubuntu, `~/packguard-data/v1/malware_js/` |
-| Windows path | `\\wsl$\Ubuntu\home\lenovo\packguard-data\v1\malware_js\` (browse only, never open the files) |
+| Location | `data/v1/malware_js/` in this repository |
+| Working copy | Clone inside WSL only. On Windows, antivirus quarantines the files and many paths exceed 260 characters. |
 | Layout | `<code-shape-id>/<package>@<version>/<file>.js` |
 | Size | 5,904 packages, 39,119 JavaScript files, about 708 MiB |
 | Built | 2026-10-23 |
@@ -30,7 +30,7 @@ Also dropped: 2,970 packages whose malware lives only in a `package.json` instal
 
 - Only `.js`, `.cjs` and `.mjs` files are kept, outside `node_modules`.
 - No `package.json` is kept, so npm lifecycle scripts cannot run.
-- Every file is read-only and has no execute bit.
+- No file has an execute bit, and git stores the files byte for byte (`-text`).
 - The files are real malware. Read them as text only and never run them with `node`, `npm` or Windows Script Host.
 
 ### Size profile
