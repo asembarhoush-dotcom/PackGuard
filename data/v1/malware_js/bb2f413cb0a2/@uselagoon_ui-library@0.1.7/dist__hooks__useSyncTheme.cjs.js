@@ -1,1 +1,0 @@
-"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});const t=require("react"),o=require("next-themes");function c(){const{resolvedTheme:e}=o.useTheme();t.useEffect(()=>{e&&localStorage.getItem("theme")!==e&&localStorage.setItem("theme",e)},[e])}exports.useSyncTheme=c;
