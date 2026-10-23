@@ -1,0 +1,9 @@
+{
+  "package": "nan-pkg",
+  "version": "2.0.0",
+  "score": null,
+  "seconds": null,
+  "chunks": [
+    { "file": "nan.js", "start": 0, "ncd": null, "match": { "file": "r.js", "start": 0 }, "text": "" }
+  ]
+}

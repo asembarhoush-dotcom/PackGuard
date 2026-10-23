@@ -1,0 +1,14 @@
+{
+  "package": "@scope/pkg\"q",
+  "version": "1.0.0",
+  "score": 0.0000,
+  "threshold": 0.5000,
+  "flagged": true,
+  "seconds": 1.5000,
+  "chunks": [
+    { "file": "escapes.txt", "start": 0, "ncd": 0.0000, "match": { "file": "ref\"dir\\x.js", "start": 8192 }, "text": "say \"hi\" \\ path\ttab\r\nnext\u0000nul\u0001\u001f\u007fdel\n" },
+    { "file": "utf8_valid.txt", "start": 4096, "ncd": 0.2500, "match": { "file": "ref\"dir\\x.js", "start": 8192 }, "text": "café € 😀 مرحبا\n" },
+    { "file": "utf8_cut_end.txt", "start": 8192, "ncd": 0.5000, "match": { "file": "ref\"dir\\x.js", "start": 8192 }, "text": "ends mid emoji \ufffd\ufffd" },
+    { "file": "utf8_invalid.txt", "start": 12288, "ncd": 0.7500, "match": { "file": "ref\"dir\\x.js", "start": 8192 }, "text": "ff:\ufffd overlong:\ufffd\ufffd surrogate:\ufffd\ufffd\ufffd above:\ufffd\ufffd\ufffd\ufffd lone_cont:\ufffd ok" }
+  ]
+}
