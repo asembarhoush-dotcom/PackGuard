@@ -1,0 +1,1 @@
+a single file is scanned whatever its name

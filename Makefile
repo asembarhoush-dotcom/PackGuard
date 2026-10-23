@@ -1,7 +1,9 @@
 LZMA_LIBDIR := $(shell pkg-config --variable=libdir liblzma)
 
 CFLAGS   ?= -std=c17 -O2 -Wall -Wextra -Wpedantic
+CFLAGS   += -pthread
 CPPFLAGS += $(shell pkg-config --cflags liblzma) -DLZMA_API_STATIC
+LDFLAGS  += -pthread
 LDLIBS   += $(LZMA_LIBDIR)/liblzma.a $(filter-out -llzma,$(shell pkg-config --static --libs liblzma))
 
 SRC_DIR   := src
