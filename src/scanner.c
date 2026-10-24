@@ -2,6 +2,7 @@
 
 #include "compresser.h"
 #include "platform.h"
+#include "prefilter.h"
 
 #include <errno.h>
 #include <float.h>
@@ -24,6 +25,13 @@ typedef struct {
     size_t group_count;
     const size_t *extra_groups;
     int want_groups;
+    const size_t *subset;
+    uint32_t *digests;
+    uint32_t *digest_len;
+    const size_t *digest_first;
+    const uint32_t *target_digest;
+    size_t target_digest_len;
+    ref_rank *ranks;
 } pass;
 
 /* A group that held a dropped copy of the kept reference chunk at index kept. */
@@ -39,6 +47,7 @@ struct scan_worker {
     pass *work;
     chunk_score best;
     double *group_best;
+    lzjd_builder builder;
 };
 
 /* A reference chunk with its content hash, used only while removing repeats. */
@@ -319,6 +328,63 @@ static void *cache_worker(void *arg)
 }
 
 /*
+ * Thread body for computing LZJD digests: claims WORK_BLOCK references at a
+ * time and writes each one's digest to its LZJD_K slot in p->digests.
+ */
+static void *digest_worker(void *arg)
+{
+    struct scan_worker *w = arg;
+    pass *p = w->work;
+    for (;;) {
+        size_t begin = atomic_fetch_add(&p->next, WORK_BLOCK);
+        if (begin >= p->count || atomic_load(&p->failed))
+            break;
+        size_t end = begin + WORK_BLOCK < p->count ? begin + WORK_BLOCK : p->count;
+        for (size_t i = begin; i < end; i++) {
+            const file_chunk *c = p->refs[i].chunk;
+            long n = lzjd_digest(&w->builder, c->data, c->length, p->digests + i * LZJD_K);
+            if (n < 0) {
+                atomic_store(&p->failed, 1);
+                break;
+            }
+            p->digest_len[i] = (uint32_t)n;
+        }
+    }
+    return NULL;
+}
+
+/*
+ * Thread body for ranking references: claims WORK_BLOCK references at a
+ * time and stores each one's LZJD similarity to the target in p->ranks.
+ */
+static void *similarity_worker(void *arg)
+{
+    struct scan_worker *w = arg;
+    pass *p = w->work;
+    for (;;) {
+        size_t begin = atomic_fetch_add(&p->next, WORK_BLOCK);
+        if (begin >= p->count || atomic_load(&p->failed))
+            break;
+        size_t end = begin + WORK_BLOCK < p->count ? begin + WORK_BLOCK : p->count;
+        for (size_t i = begin; i < end; i++) {
+            double s = lzjd_similarity(p->target_digest, p->target_digest_len,
+                                       p->digests + p->digest_first[i], p->digest_len[i]);
+            p->ranks[i] = (ref_rank){s, i};
+        }
+    }
+    return NULL;
+}
+
+/* qsort() comparator that puts the most similar references first, earlier ones first on ties. */
+static int compare_ranks(const void *pa, const void *pb)
+{
+    const ref_rank *a = pa, *b = pb;
+    if (a->similarity != b->similarity)
+        return a->similarity > b->similarity ? -1 : 1;
+    return a->ref < b->ref ? -1 : a->ref > b->ref;
+}
+
+/*
  * NCD(x, y) = (C(xy) - min(C(x), C(y))) / max(C(x), C(y)), with C(xy)
  * estimated as C(x) + C(y|x) so only the target is compressed per pair.
  */
@@ -347,7 +413,8 @@ static void *score_worker(void *arg)
         if (begin >= p->count || atomic_load(&p->failed))
             break;
         size_t end = begin + WORK_BLOCK < p->count ? begin + WORK_BLOCK : p->count;
-        for (size_t i = begin; i < end; i++) {
+        for (size_t pos = begin; pos < end; pos++) {
+            size_t i = p->subset ? p->subset[pos] : pos;
             const file_chunk *r = p->refs[i].chunk;
             size_t given;
             if (compressed_size_given(&w->comp, r->data, r->length,
@@ -423,37 +490,96 @@ static void group_key(const char *path, const char *dir, const char **start, siz
 }
 
 /*
- * Gives every reference file a group id and fills set->group_names.
- * Files come in walk order, so files of one group are next to each other.
- * Returns 0 on success, -1 if memory runs out.
+ * Stores in *start and *len the package key of the reference file at path
+ * loaded from dir: the second path component below dir when the file sits
+ * at least two folders down (in v1, <package>@<version>), otherwise the
+ * group key.
  */
-static int assign_groups(reference_set *set, const char *dir, size_t *file_group)
+static void package_key(const char *path, const char *dir, const char **start, size_t *len)
 {
-    set->group_names = malloc(set->files.count * sizeof *set->group_names);
-    if (set->group_names == NULL)
+    group_key(path, dir, start, len);
+    const char *second = *start + *len;
+    if (!is_path_sep(*second))
+        return;
+    second++;
+    size_t n = 0;
+    while (second[n] != '\0' && !is_path_sep(second[n]))
+        n++;
+    if (n > 0 && is_path_sep(second[n])) {
+        *start = second;
+        *len = n;
+    }
+}
+
+/*
+ * Gives every reference file an id from key and fills *names (owned by the
+ * caller, *count entries) with one copy of each distinct key in walk order;
+ * consecutive files with the same key share an id. Returns 0 on success,
+ * -1 if memory runs out (*names and *count then hold what was made so far).
+ */
+static int assign_names(const reference_set *set, const char *dir,
+                        void (*key)(const char *, const char *, const char **, size_t *),
+                        char ***names, size_t *count, size_t *file_id)
+{
+    *names = malloc(set->files.count * sizeof **names);
+    *count = 0;
+    if (*names == NULL)
         return -1;
     const char *prev = NULL;
     size_t prev_len = 0;
     for (size_t i = 0; i < set->files.count; i++) {
-        const char *key;
+        const char *k;
         size_t len;
-        group_key(set->files.items[i].path, dir, &key, &len);
-        if (prev == NULL || len != prev_len || memcmp(key, prev, len) != 0) {
+        key(set->files.items[i].path, dir, &k, &len);
+        if (prev == NULL || len != prev_len || memcmp(k, prev, len) != 0) {
             char *name = malloc(len + 1);
             if (name == NULL)
                 return -1;
-            memcpy(name, key, len);
+            memcpy(name, k, len);
             name[len] = '\0';
-            set->group_names[set->group_count++] = name;
-            prev = key;
+            (*names)[(*count)++] = name;
+            prev = k;
             prev_len = len;
         }
-        file_group[i] = set->group_count - 1;
+        file_id[i] = *count - 1;
     }
     return 0;
 }
 
-int load_references(reference_set *set, const char *dir, size_t nthreads)
+/*
+ * Computes the LZJD digest of every kept reference on all threads and packs
+ * the digests end to end in set->digests (digest_first and digest_len
+ * locate each one), then allocates the per-chunk ranking buffers.
+ * Returns 0 on success, -1 on failure.
+ */
+static int build_digests(reference_set *set)
+{
+    set->digests = malloc(set->count * LZJD_K * sizeof *set->digests);
+    set->digest_len = malloc(set->count * sizeof *set->digest_len);
+    set->digest_first = malloc(set->count * sizeof *set->digest_first);
+    set->ranks = malloc(set->count * sizeof *set->ranks);
+    set->subset = malloc(set->count * sizeof *set->subset);
+    if (set->digests == NULL || set->digest_len == NULL || set->digest_first == NULL
+        || set->ranks == NULL || set->subset == NULL)
+        return -1;
+    pass p = {.refs = set->refs, .count = set->count, .digests = set->digests,
+              .digest_len = set->digest_len};
+    if (run_pass(set, &p, digest_worker) != 0)
+        return -1;
+
+    size_t pos = 0;
+    for (size_t i = 0; i < set->count; i++) {
+        memmove(set->digests + pos, set->digests + i * LZJD_K, set->digest_len[i] * sizeof *set->digests);
+        set->digest_first[i] = pos;
+        pos += set->digest_len[i];
+    }
+    uint32_t *packed = realloc(set->digests, (pos ? pos : 1) * sizeof *packed);
+    if (packed != NULL)
+        set->digests = packed;
+    return 0;
+}
+
+int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates)
 {
     size_t *file_group = NULL;
     *set = (reference_set){0};
@@ -478,8 +604,14 @@ int load_references(reference_set *set, const char *dir, size_t nthreads)
     }
 
     file_group = malloc(set->files.count * sizeof *file_group);
-    if (file_group == NULL || assign_groups(set, dir, file_group) != 0)
+    set->file_package = malloc(set->files.count * sizeof *set->file_package);
+    if (file_group == NULL || set->file_package == NULL
+        || assign_names(set, dir, group_key, &set->group_names, &set->group_count, file_group) != 0
+        || assign_names(set, dir, package_key, &set->package_names, &set->package_count,
+                        set->file_package) != 0)
         goto fail;
+    for (size_t i = 0; i < set->nthreads; i++)
+        lzjd_builder_init(&set->workers[i].builder);
     for (size_t i = 0; i < set->nthreads; i++) {
         set->workers[i].group_best = malloc(set->group_count * sizeof *set->workers[i].group_best);
         if (set->workers[i].group_best == NULL)
@@ -500,6 +632,11 @@ int load_references(reference_set *set, const char *dir, size_t nthreads)
     pass p = {.refs = set->refs, .count = set->count};
     if (run_pass(set, &p, cache_worker) != 0)
         goto fail;
+    if (candidates > 0 && candidates < set->count) {
+        set->candidates = candidates;
+        if (build_digests(set) != 0)
+            goto fail;
+    }
     return 0;
 
 fail:
@@ -512,9 +649,23 @@ int score_chunk(reference_set *set, const file_chunk *chunk, chunk_score *out, d
 {
     if (set == NULL || set->count == 0 || chunk == NULL || out == NULL)
         return -1;
-    pass p = {.refs = set->refs, .count = set->count, .target = chunk,
-              .group_count = set->group_count, .extra_groups = set->extra_groups,
-              .want_groups = group_best != NULL};
+    if (set->candidates > 0) {
+        uint32_t digest[LZJD_K];
+        long n = lzjd_digest(&set->workers[0].builder, chunk->data, chunk->length, digest);
+        if (n < 0)
+            return -1;
+        pass r = {.refs = set->refs, .count = set->count, .digests = set->digests,
+                  .digest_len = set->digest_len, .digest_first = set->digest_first,
+                  .target_digest = digest, .target_digest_len = (size_t)n, .ranks = set->ranks};
+        if (run_pass(set, &r, similarity_worker) != 0)
+            return -1;
+        qsort(set->ranks, set->count, sizeof *set->ranks, compare_ranks);
+        for (size_t i = 0; i < set->candidates; i++)
+            set->subset[i] = set->ranks[i].ref;
+    }
+    pass p = {.refs = set->refs, .count = set->candidates ? set->candidates : set->count,
+              .target = chunk, .group_count = set->group_count, .extra_groups = set->extra_groups,
+              .want_groups = group_best != NULL, .subset = set->candidates ? set->subset : NULL};
     if (compressed_size(&set->workers[0].comp, chunk->data, chunk->length, &p.target_csize) != 0)
         return -1;
     if (run_pass(set, &p, score_worker) != 0)
@@ -543,14 +694,26 @@ void free_references(reference_set *set)
         return;
     for (size_t i = 0; i < set->nthreads; i++)
         compressor_free(&set->workers[i].comp);
-    if (set->workers != NULL)
-        for (size_t i = 0; i < set->nthreads; i++)
+    if (set->workers != NULL) {
+        for (size_t i = 0; i < set->nthreads; i++) {
             free(set->workers[i].group_best);
+            lzjd_builder_free(&set->workers[i].builder);
+        }
+    }
     free(set->workers);
     for (size_t i = 0; i < set->group_count; i++)
         free(set->group_names[i]);
     free(set->group_names);
+    for (size_t i = 0; i < set->package_count; i++)
+        free(set->package_names[i]);
+    free(set->package_names);
+    free(set->file_package);
     free(set->extra_groups);
+    free(set->digests);
+    free(set->digest_len);
+    free(set->digest_first);
+    free(set->ranks);
+    free(set->subset);
     free(set->refs);
     free_files(&set->files);
     *set = (reference_set){0};

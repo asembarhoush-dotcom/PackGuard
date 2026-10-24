@@ -1,0 +1,6 @@
+threads,seconds,package,machine
+1,57.8,uuid@9.0.1 vs benign corpus,i3-1315U Windows 11 native build
+2,35.1,uuid@9.0.1 vs benign corpus,i3-1315U Windows 11 native build
+4,26.0,uuid@9.0.1 vs benign corpus,i3-1315U Windows 11 native build
+6,23.8,uuid@9.0.1 vs benign corpus,i3-1315U Windows 11 native build
+8,23.5,uuid@9.0.1 vs benign corpus,i3-1315U Windows 11 native build

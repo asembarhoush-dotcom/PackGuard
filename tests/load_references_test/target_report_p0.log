@@ -1,0 +1,3 @@
+packguard: 5 reference files, 11 chunks, 5 distinct, 4 packages, loaded in 0.0 s on 2 threads, no prefilter: NCD on every chunk
+packguard:   index.js @0: ncd 0.5906
+packguard: tests\load_references_test\target@1.0.0: 1 files, 1 chunks, score 0.5906, 0.0 s, closest pkg@1.0.0 (groupA)

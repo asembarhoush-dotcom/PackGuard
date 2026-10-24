@@ -48,6 +48,37 @@ Also dropped: 2,970 packages whose malware lives only in a `package.json` instal
 | 2025 | 3,371 |
 | 2026 | 2,007 |
 
+### Integrity
+
+On 2026-10-24 an extracted copy in WSL (`~/packguard-data/v1/malware_js/`) was compared with the 16 zips by CRC-32 and size: all 39,119 files match, none missing or extra. The v1 detailed test below used that copy.
+
+### Distinct chunks
+
+Split into the v1 chunks (files over 16 KiB as 8 KiB windows every 4 KiB), the set has 190,939 chunks but only 69,249 distinct ones. The scanner scores each distinct chunk once.
+
+## v1 detailed test set
+
+Built 2026-10-24 to measure v1 stage 1 on malware and benign packages it has not memorised. Results and analysis: [`experiments/v1/`](experiments/v1/README.md).
+
+| | |
+|---|---|
+| Location | WSL only, `~/pg-detailed/targets/<category>/<package>@<version>/`, not committed (live malware). Rebuild with the scripts in `experiments/v1/scripts/`. |
+| Size cap | At most 32 KiB of JavaScript per package, so the benign packages match the malware's sizes (v1 median 2.9 KB) and the run fits in a few hours |
+| Malware files | Only `.js`, `.cjs` and `.mjs`, no `package.json`, decrypted in memory, written read-only, named as in v1 |
+| Seeds | Python `random.Random(20261024)` for malware, `20261025` for benign, `7` for the scan order |
+
+| Category | Packages | How it was chosen | Dropped while collecting |
+|---|---|---|---|
+| `mal_known` | 50 | Random v1 packages of 32 KiB or less. Scored as is (trivial: they are in v1) and with their family left out (see the analysis). | none |
+| `mal_newver` | 35 | For random v1 names at the 3-version cap, one DataDog version the cap dropped (zip of 200 KB or less) | 4 without JavaScript, 9 over 32 KiB |
+| `mal_newname` | 35 | Random DataDog `malicious_intent` zips (200 KB or less) whose package name is not in v1: packages v1 dropped as code-shape or exact duplicates | 5 without JavaScript, 1 over 32 KiB |
+| `ben_popular` | 50 | Latest version of well-known npm packages (the list is in `fetch_benign.py`), none in the DataDog manifest | 3 over 32 KiB |
+| `ben_longtail` | 25 | npm search results for 42 generic keywords, at most 2,000 downloads a month, last published 2015-01-01 to 2024-06-30, not deprecated, none in the DataDog manifest | 5 without JavaScript, 15 over 32 KiB |
+
+For every `mal_newver` and `mal_newname` file the manifest records whether it is identical to a v1 file once whitespace is ignored (the v1 duplicate rule), so the analysis can score only the files v1 has never seen.
+
+The benign sets are labelled benign because they are on the registry, not deprecated and not in any DataDog list; they were not audited by hand. The long-tail set is small (25) because few search results met the filters within the size cap.
+
 ## Not yet collected (v2)
 
 - DataDog `compromised_lib` samples: real libraries with injected code, need a diff against the clean version.
@@ -56,4 +87,4 @@ Also dropped: 2,970 packages whose malware lives only in a `package.json` instal
 - Backstabber's Knife Collection and MalwareBench: access on request.
 - MalOSS: the repository has package-name lists only; samples come from the authors.
 - OpenSSF malicious-packages: reports only, used to confirm live-scan detections.
-- Benign packages from the npm registry.
+- A large benign set from the npm registry, including packages over 32 KiB. The 75 benign packages in the v1 detailed test are only enough to estimate false alarms roughly.
