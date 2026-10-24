@@ -46,6 +46,7 @@ PackGuard/
 ├── src/                        # C scanner (stage 1; stage 2 ONNX inference planned)
 │   ├── main.c                  # Command line: load references once, scan each package
 │   ├── scanner.c / .h          # Reference set, cached C(x), parallel NCD scoring
+│   ├── prefilter.c / .h        # LZJD digests: picks the references worth an NCD
 │   ├── compresser.c / .h       # Raw LZMA2 compressed sizes via liblzma
 │   ├── chunker.c / .h          # Per-file split into 8 KB overlapping chunks
 │   ├── report.c / .h           # JSON output per package
@@ -131,19 +132,22 @@ docker run --rm --network none -v "$PWD/refs:/refs:ro" -v "$PWD/samples:/work:ro
 ### Run a scan
 
 ```bash
-build/packguard [-j threads] [-t threshold] [-k groups] [-o report.json | -d report_dir] \
-                <reference_dir> <package_path>...
+build/packguard [-j threads] [-p candidates] [-t threshold] [-k groups] \
+                [-o report.json | -d report_dir] <reference_dir> <package_path>...
 ```
 
 | Option | Meaning |
 |---|---|
 | `-j` | Worker threads (default: all logical processors) |
+| `-p` | LZJD prefilter: run NCD only on this many most similar reference chunks per chunk (default 256; `0` scores every reference, the exact brute-force mode) |
 | `-t` | Add `threshold` and `flagged` (score at or below the threshold) to the report |
 | `-k` | Per chunk, also list the `k` closest reference groups (first folder below `reference_dir`, the code-shape folder in v1) |
 | `-o` | Write the report of a single package to a file (default: stdout) |
 | `-d` | Write one report per package to `report_dir/<package folder>.json` |
 
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
+
+**Prefilter.** Comparing every chunk with all 69,249 v1 chunks by NCD takes about 34 s per small package. The scanner therefore first ranks the references with [LZJD](https://arxiv.org/abs/1708.03346) (Raff and Nicholas, 2017), the Lempel-Ziv Jaccard distance: the set of phrases an LZ compressor would build, compared by a bottom-1024 min-hash. It is the same idea as NCD without running the compressor, and takes milliseconds for all of v1. NCD then runs only on the 256 most similar chunks. On the v1 detailed test this is about 160× faster (0.23 s per package) and gave every malicious package exactly its brute-force score; see [`experiments/v1/`](experiments/v1/README.md).
 
 ### 5. Train the AI filter
 
@@ -164,16 +168,19 @@ The scanner writes one JSON file per package, which stage 2 reads:
   "threshold": 0.5,
   "flagged": true,
   "seconds": 2.31,
+  "matched_packages": [
+    { "package": "evil@1.0.0", "group": "1a2b3c4d5e6f", "ncd": 0.41, "chunks": 1 }
+  ],
   "chunks": [
     { "file": "install.js", "start": 0, "ncd": 0.41,
-      "match": { "file": "1a2b3c4d5e6f/evil@1.0.0/index.js", "start": 0 },
+      "match": { "file": "1a2b3c4d5e6f/evil@1.0.0/index.js", "package": "evil@1.0.0", "start": 0 },
       "near": [ { "group": "1a2b3c4d5e6f", "ncd": 0.41 } ],
       "text": "..." }
   ]
 }
 ```
 
-Lower `ncd` = more similar to known malware. `match` is the closest reference chunk. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is `null` when a package has no JavaScript. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
+Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is `null` when a package has no JavaScript. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
 
 ## Default configuration (v1)
 
@@ -182,6 +189,7 @@ Lower `ncd` = more similar to known malware. `match` is the closest reference ch
 | Comparison unit | Per file; files > 16 KB split into 8 KB chunks with 4 KB overlap |
 | Compressor | Raw LZMA2 (liblzma), preset 6 (extreme off), 1 MB dictionary, `lc = 3` |
 | C(xy) | Estimated as C(x) + C(y\|x), with the reference x as an LZMA preset dictionary |
+| Prefilter | LZJD (bottom-1024 min-hash of the LZ phrase set); NCD on the 256 most similar reference chunks |
 | Package score | Most suspicious file/chunk (minimum NCD) |
 | Stage 1 threshold | Tuned for ~99% malware recall on validation data |
 | Stage 2 model | ModernBERT-base, fine-tuned, 8-bit quantized ONNX |
@@ -203,6 +211,8 @@ Benign packages are downloaded from the public npm registry. Near-duplicates are
 - **Baseline:** GuardDog, evaluated on the same test data
 - **Experiments:** compressor (xz vs. zstd vs. PPMd), chunk size (4 / 8 / 16 KB), with vs. without the AI filter
 - **Live test:** 30-day scan of newly published npm packages, confirmed via npm security takedowns and OpenSSF reports
+
+The first stage 1 measurements, on 195 small packages, are in [`experiments/v1/`](experiments/v1/README.md): known malware and renamed clones are flagged with no benign false alarm, but malware from an unseen family mostly is not, which is the job of stage 2.
 
 ## ⚠️ Safety
 
