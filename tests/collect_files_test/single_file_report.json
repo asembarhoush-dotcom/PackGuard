@@ -1,0 +1,9 @@
+{
+  "package": "single_file.txt",
+  "version": "",
+  "score": 1.0000,
+  "seconds": 0.0081,
+  "chunks": [
+    { "file": "single_file.txt", "start": 0, "ncd": 1.0000, "match": { "file": "code_a_renamed.js", "start": 0 }, "text": "a single file is scanned whatever its name\n" }
+  ]
+}

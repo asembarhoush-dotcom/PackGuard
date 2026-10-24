@@ -24,6 +24,9 @@ typedef struct {
  * Use COMPRESS_PRESET, COMPRESS_DICT_SIZE and COMPRESS_LC for the README's
  * v1 settings: preset 6 (extreme off), 1 MiB dictionary, lc = 3.
  * The encoder's memory is allocated once here and reused by every call.
+ * c points into itself (filters[0].options is &c->options), so it must stay
+ * at the same address until compressor_free(); never copy or move it.
+ * One compressor must not be used by two threads at once.
  *
  * Returns 0 on success, -1 if the settings are invalid or memory runs out.
  */
@@ -53,6 +56,8 @@ int compressed_size_pair(compressor *c, const unsigned char *a, size_t alen,
  * so this is C(y|x), a cheaper estimate of C(xy) - C(x) with x = dict and
  * y = data. With C(x) cached per reference, C(x) + C(y|x) stands in for C(xy)
  * at a fraction of the cost. Only the last dict_size bytes of dict are used.
+ * dict is only borrowed for the duration of the call; c keeps no pointer to
+ * it afterwards.
  *
  * Returns 0 on success, -1 on failure.
  */

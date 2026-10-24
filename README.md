@@ -39,22 +39,25 @@ Values near 0 mean very similar; near 1 means unrelated. Each package is scored 
 
 **Stage 2 – AI false-alarm filter (Python → ONNX).** A pretrained, code-aware model (ModernBERT) reviews **only** the packages flagged by stage 1. A hierarchical design lets it read whole packages, guided by the suspicious regions found in stage 1. The trained model is exported to ONNX, quantized to 8-bit and runs on a standard CPU through the ONNX Runtime C API, inside the same C scanner.
 
-## Repository structure (planned)
+## Repository structure
 
 ```
 PackGuard/
-├── src/                        # C scanner (stage 1 + ONNX inference)
-│   ├── main.c                  # Command-line entry point
-│   ├── lzma_ncd.c / .h         # NCD via liblzma raw LZMA2 + cached malware references
+├── src/                        # C scanner (stage 1; stage 2 ONNX inference planned)
+│   ├── main.c                  # Command line: load references once, scan each package
+│   ├── scanner.c / .h          # Reference set, cached C(x), parallel NCD scoring
+│   ├── compresser.c / .h       # Raw LZMA2 compressed sizes via liblzma
 │   ├── chunker.c / .h          # Per-file split into 8 KB overlapping chunks
-│   ├── ai_filter.c / .h        # Stage 2 inference (ONNX Runtime C API)
-│   └── report.c / .h           # JSON output per package
+│   ├── report.c / .h           # JSON output per package
+│   ├── platform.c / .h         # Threads, directory walk, clock (POSIX and Win32)
+│   └── ai_filter.c / .h        # Stage 2 inference (ONNX Runtime C API), planned
 ├── training/
-│   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face)
-├── data/v1/malware_js_*.zip     # v1 malware set, 16 encrypted zips, see dataset_index.md
+│   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face), planned
+├── data/v1/malware_js_*.zip    # v1 malware set, 16 encrypted zips, see dataset_index.md
+├── tests/                      # Test inputs and outputs, one folder per function
 ├── experiments/                # Configs and result logs per version
-├── docs/                       # Project log, design notes
-├── Makefile                    # Build configuration
+├── docs/                       # Design notes (memory safety and ownership)
+├── Makefile                    # Linux/macOS build
 ├── Dockerfile                  # Containerised scanner build
 └── README.md
 ```
@@ -102,16 +105,33 @@ make ONNXRUNTIME_ROOT=/opt/onnxruntime   # produces build/packguard
 make clean                               # removes build output
 ```
 
-For a single self-contained binary, link liblzma statically (`liblzma.a`); it is small and has no further dependencies.
+For a single self-contained binary, link liblzma statically (`liblzma.a`); it is small and has no further dependencies. The Makefile already does this.
 
 ### 4. Or build with Docker
 
 ```bash
 docker build -t packguard .
-docker run --rm --network none -v "$PWD/samples:/work:ro" packguard <args>
+docker run --rm --network none -v "$PWD/refs:/refs:ro" -v "$PWD/samples:/work:ro" packguard /refs /work/<package>
 ```
 
-`--network none` and a read-only mount keep samples isolated (the scanner's command-line arguments are still being defined).
+`--network none` and read-only mounts keep samples isolated.
+
+### Run a scan
+
+```bash
+build/packguard [-j threads] [-t threshold] [-k groups] [-o report.json | -d report_dir] \
+                <reference_dir> <package_path>...
+```
+
+| Option | Meaning |
+|---|---|
+| `-j` | Worker threads (default: all logical processors) |
+| `-t` | Add `threshold` and `flagged` (score at or below the threshold) to the report |
+| `-k` | Per chunk, also list the `k` closest reference groups (first folder below `reference_dir`, the code-shape folder in v1) |
+| `-o` | Write the report of a single package to a file (default: stdout) |
+| `-d` | Write one report per package to `report_dir/<package folder>.json` |
+
+The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
 
 ### 5. Train the AI filter
 
@@ -129,13 +149,19 @@ The scanner writes one JSON file per package, which stage 2 reads:
   "package": "example-pkg",
   "version": "1.0.2",
   "score": 0.41,
+  "threshold": 0.5,
+  "flagged": true,
+  "seconds": 2.31,
   "chunks": [
-    { "file": "install.js", "start": 0, "ncd": 0.41, "text": "..." }
+    { "file": "install.js", "start": 0, "ncd": 0.41,
+      "match": { "file": "1a2b3c4d5e6f/evil@1.0.0/index.js", "start": 0 },
+      "near": [ { "group": "1a2b3c4d5e6f", "ncd": 0.41 } ],
+      "text": "..." }
   ]
 }
 ```
 
-Lower `ncd` = more similar to known malware.
+Lower `ncd` = more similar to known malware. `match` is the closest reference chunk. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is `null` when a package has no JavaScript. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
 
 ## Default configuration (v1)
 
@@ -143,6 +169,7 @@ Lower `ncd` = more similar to known malware.
 |---|---|
 | Comparison unit | Per file; files > 16 KB split into 8 KB chunks with 4 KB overlap |
 | Compressor | Raw LZMA2 (liblzma), preset 6 (extreme off), 1 MB dictionary, `lc = 3` |
+| C(xy) | Estimated as C(x) + C(y\|x), with the reference x as an LZMA preset dictionary |
 | Package score | Most suspicious file/chunk (minimum NCD) |
 | Stage 1 threshold | Tuned for ~99% malware recall on validation data |
 | Stage 2 model | ModernBERT-base, fine-tuned, 8-bit quantized ONNX |

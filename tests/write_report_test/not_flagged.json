@@ -1,0 +1,10 @@
+{
+  "package": "far-pkg",
+  "version": "0.1.0",
+  "score": 0.9000,
+  "threshold": 0.5000,
+  "flagged": false,
+  "chunks": [
+    { "file": "utf8_valid.txt", "start": 4096, "ncd": 0.2500, "match": { "file": "ref\"dir\\x.js", "start": 8192 }, "text": "café € 😀 مرحبا\n" }
+  ]
+}
