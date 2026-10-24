@@ -1,0 +1,469 @@
+{
+ "categories": {
+  "mal_known": {
+   "score": {
+    "n": 50,
+    "median": 0.030100000000000002,
+    "q1": 0.022850000000000002,
+    "q3": 0.041975,
+    "min": 0.0118,
+    "max": 0.1687
+   },
+   "score_leave_family_out": {
+    "n": 50,
+    "median": 0.5891,
+    "q1": 0.22112500000000002,
+    "q3": 0.734725,
+    "min": 0.0253,
+    "max": 0.8162
+   }
+  },
+  "mal_newver": {
+   "score": {
+    "n": 35,
+    "median": 0.081,
+    "q1": 0.0414,
+    "q3": 0.60535,
+    "min": 0.016,
+    "max": 0.9165
+   },
+   "score_leave_name_out": {
+    "n": 35,
+    "median": 0.6264,
+    "q1": 0.1986,
+    "q3": 0.72085,
+    "min": 0.0201,
+    "max": 0.9165
+   }
+  },
+  "mal_newname": {
+   "score": {
+    "n": 35,
+    "median": 0.027,
+    "q1": 0.0269,
+    "q3": 0.06255,
+    "min": 0.0165,
+    "max": 0.7059
+   }
+  },
+  "ben_popular": {
+   "score": {
+    "n": 50,
+    "median": 0.82635,
+    "q1": 0.7535000000000001,
+    "q3": 0.8744,
+    "min": 0.1983,
+    "max": 0.9346
+   }
+  },
+  "ben_longtail": {
+   "score": {
+    "n": 25,
+    "median": 0.7611,
+    "q1": 0.5443,
+    "q3": 0.9045,
+    "min": 0.2046,
+    "max": 0.9466
+   }
+  },
+  "novel_files": {
+   "score": {
+    "n": 45,
+    "median": 0.1003,
+    "q1": 0.0335,
+    "q3": 0.6465,
+    "min": 0.0269,
+    "max": 0.9165
+   }
+  }
+ },
+ "scenarios": [
+  {
+   "scenario": "All malware as scanned",
+   "malicious": 120,
+   "benign": 75,
+   "auc": 0.9622222222222222,
+   "auc_ci95": [
+    0.9362222222222222,
+    0.9847805555555555
+   ],
+   "recall_at_zero_false_alarms": 0.875,
+   "recall_at_zero_false_alarms_ci95": [
+    0.8039690855177497,
+    0.9227657111903032
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.8958,
+   "recall_at_t99": 0.9916666666666667,
+   "false_alarm_rate_at_t99": 0.7866666666666666,
+   "false_alarm_rate_at_t99_ci95": [
+    0.6811982171013853,
+    0.86419913657992
+   ],
+   "best_f1": 0.9333333333333333,
+   "best_f1_threshold": 0.1818,
+   "best_f1_recall": 0.875,
+   "best_f1_false_alarm_rate": 0.0
+  },
+  {
+   "scenario": "Known malware (in v1)",
+   "malicious": 50,
+   "benign": 75,
+   "auc": 1.0,
+   "auc_ci95": [
+    1.0,
+    1.0
+   ],
+   "recall_at_zero_false_alarms": 1.0,
+   "recall_at_zero_false_alarms_ci95": [
+    0.9286499658256813,
+    1.0
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.1687,
+   "recall_at_t99": 1.0,
+   "false_alarm_rate_at_t99": 0.0,
+   "false_alarm_rate_at_t99_ci95": [
+    0.0,
+    0.04872554590470005
+   ],
+   "best_f1": 1.0,
+   "best_f1_threshold": 0.1687,
+   "best_f1_recall": 1.0,
+   "best_f1_false_alarm_rate": 0.0
+  },
+  {
+   "scenario": "New version of a v1 package",
+   "malicious": 35,
+   "benign": 75,
+   "auc": 0.8857142857142857,
+   "auc_ci95": [
+    0.8057142857142857,
+    0.956590476190476
+   ],
+   "recall_at_zero_false_alarms": 0.6571428571428571,
+   "recall_at_zero_false_alarms_ci95": [
+    0.4915164687273671,
+    0.7916850471731106
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.9165,
+   "recall_at_t99": 1.0,
+   "false_alarm_rate_at_t99": 0.8533333333333334,
+   "false_alarm_rate_at_t99_ci95": [
+    0.7561502569307123,
+    0.9160836906299664
+   ],
+   "best_f1": 0.7931034482758621,
+   "best_f1_threshold": 0.1818,
+   "best_f1_recall": 0.6571428571428571,
+   "best_f1_false_alarm_rate": 0.0
+  },
+  {
+   "scenario": "New name, not in v1",
+   "malicious": 35,
+   "benign": 75,
+   "auc": 0.9847619047619047,
+   "auc_ci95": [
+    0.9630380952380952,
+    1.0
+   ],
+   "recall_at_zero_false_alarms": 0.9142857142857143,
+   "recall_at_zero_false_alarms_ci95": [
+    0.7762040092883747,
+    0.970418168994703
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.7059,
+   "recall_at_t99": 1.0,
+   "false_alarm_rate_at_t99": 0.25333333333333335,
+   "false_alarm_rate_at_t99_ci95": [
+    0.16859919647948146,
+    0.36210540616683723
+   ],
+   "best_f1": 0.9552238805970149,
+   "best_f1_threshold": 0.1628,
+   "best_f1_recall": 0.9142857142857143,
+   "best_f1_false_alarm_rate": 0.0
+  },
+  {
+   "scenario": "Novel files only (not in v1)",
+   "malicious": 45,
+   "benign": 75,
+   "auc": 0.8847407407407407,
+   "auc_ci95": [
+    0.8115481481481481,
+    0.9437111111111111
+   ],
+   "recall_at_zero_false_alarms": 0.6222222222222222,
+   "recall_at_zero_false_alarms_ci95": [
+    0.4762967000646754,
+    0.7489211470165014
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.9165,
+   "recall_at_t99": 1.0,
+   "false_alarm_rate_at_t99": 0.8533333333333334,
+   "false_alarm_rate_at_t99_ci95": [
+    0.7561502569307123,
+    0.9160836906299664
+   ],
+   "best_f1": 0.7735849056603774,
+   "best_f1_threshold": 0.733,
+   "best_f1_recall": 0.9111111111111111,
+   "best_f1_false_alarm_rate": 0.26666666666666666
+  },
+  {
+   "scenario": "New version, earlier versions left out",
+   "malicious": 35,
+   "benign": 75,
+   "auc": 0.788,
+   "auc_ci95": [
+    0.6868380952380952,
+    0.8748619047619047
+   ],
+   "recall_at_zero_false_alarms": 0.2571428571428571,
+   "recall_at_zero_false_alarms_ci95": [
+    0.1416286872655014,
+    0.4206962427064873
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.9165,
+   "recall_at_t99": 1.0,
+   "false_alarm_rate_at_t99": 0.8533333333333334,
+   "false_alarm_rate_at_t99_ci95": [
+    0.7561502569307123,
+    0.9160836906299664
+   ],
+   "best_f1": 0.6666666666666666,
+   "best_f1_threshold": 0.7236,
+   "best_f1_recall": 0.7714285714285715,
+   "best_f1_false_alarm_rate": 0.25333333333333335
+  },
+  {
+   "scenario": "Unseen family (known, family left out)",
+   "malicious": 50,
+   "benign": 75,
+   "auc": 0.8328,
+   "auc_ci95": [
+    0.7634666666666666,
+    0.8954666666666666
+   ],
+   "recall_at_zero_false_alarms": 0.24,
+   "recall_at_zero_false_alarms_ci95": [
+    0.14297252401872207,
+    0.3741294937519236
+   ],
+   "threshold_zero_false_alarms": 0.1983,
+   "threshold_99_recall": 0.8162,
+   "recall_at_t99": 1.0,
+   "false_alarm_rate_at_t99": 0.5333333333333333,
+   "false_alarm_rate_at_t99_ci95": [
+    0.4215733915278032,
+    0.6418449054118834
+   ],
+   "best_f1": 0.743801652892562,
+   "best_f1_threshold": 0.7654,
+   "best_f1_recall": 0.9,
+   "best_f1_false_alarm_rate": 0.3466666666666667
+  }
+ ],
+ "censored": {
+  "leave_family_out": 0,
+  "leave_name_out": 0
+ },
+ "matches": {
+  "mal_known": {
+   "same_name_group": 50,
+   "own_group": 48,
+   "packages": 50,
+   "with_files_identical_to_v1": 0
+  },
+  "mal_newver": {
+   "same_name_group": 16,
+   "own_group": 0,
+   "packages": 35,
+   "with_files_identical_to_v1": 12
+  },
+  "mal_newname": {
+   "same_name_group": 0,
+   "own_group": 0,
+   "packages": 35,
+   "with_files_identical_to_v1": 27
+  }
+ },
+ "lowest_benign": [
+  {
+   "package": "isexe",
+   "version": "4.0.0",
+   "category": "ben_popular",
+   "score": 0.1983,
+   "match_file": "0605487f5b6a/nuvyra-marketplace-sdk@1.0.1/dist__types.js"
+  },
+  {
+   "package": "@nzz/et-utils-date",
+   "version": "1.0.6",
+   "category": "ben_longtail",
+   "score": 0.2046,
+   "match_file": "3179b3e168ce/hardhatjs@2.22.15/common__index.js"
+  },
+  {
+   "package": "rn-select-date-range",
+   "version": "5.0.0",
+   "category": "ben_longtail",
+   "score": 0.3043,
+   "match_file": "26514aba049f/dzyclutch-baileys@1.1.19/lib__Store__index.js"
+  },
+  {
+   "package": "body-parser",
+   "version": "2.4.0",
+   "category": "ben_popular",
+   "score": 0.3187,
+   "match_file": "be8164d46ffb/boby_parser@2.2.0/lib__types__json.js"
+  },
+  {
+   "package": "off-color",
+   "version": "2.0.0",
+   "category": "ben_longtail",
+   "score": 0.3333,
+   "match_file": "f33d0a1a7a96/react-milton@19.1.1/react.react-server.js"
+  },
+  {
+   "package": "signal-exit",
+   "version": "4.1.0",
+   "category": "ben_popular",
+   "score": 0.4439,
+   "match_file": "3882b494ce01/dazz-redirects@1.0.0/dist__index.js"
+  },
+  {
+   "package": "@softwareventures/date",
+   "version": "5.0.2",
+   "category": "ben_longtail",
+   "score": 0.4947,
+   "match_file": "3179b3e168ce/hardhatjs@2.22.15/internal__cli__constants.js"
+  },
+  {
+   "package": "local-date",
+   "version": "2.0.6",
+   "category": "ben_longtail",
+   "score": 0.4971,
+   "match_file": "bda3a5751c9b/vaildator@13.15.18/lib__util__nullUndefinedCheck.js"
+  },
+  {
+   "package": "typescript-array-utils",
+   "version": "0.1.4",
+   "category": "ben_longtail",
+   "score": 0.5284,
+   "match_file": "0cdb0c44544a/telegram-util@2.26.17/inspect.js"
+  },
+  {
+   "package": "mime-db",
+   "version": "1.54.0",
+   "category": "ben_popular",
+   "score": 0.5371,
+   "match_file": "2576057deb59/epxreso@5.2.0/index.js"
+  }
+ ],
+ "highest_malicious": [
+  {
+   "package": "ftm-noderpc",
+   "version": "1.0.8",
+   "category": "mal_newver",
+   "score": 0.9165,
+   "js_bytes": 22974,
+   "match_file": "bfc080c4b729/monotomic@24.6.3/functions__globals.js"
+  },
+  {
+   "package": "posa-loginpage-plugin",
+   "version": "1.0.5",
+   "category": "mal_newver",
+   "score": 0.8958,
+   "js_bytes": 3096,
+   "match_file": "0e0621577ad0/@capacitor-bmo_biometric@9999.1.1/test.js"
+  },
+  {
+   "package": "fadlsjf",
+   "version": "1.0.4",
+   "category": "mal_newver",
+   "score": 0.8716,
+   "js_bytes": 98,
+   "match_file": "fd93278835b6/fadlsjf@1.0.3/index.js"
+  },
+  {
+   "package": "testt-tester",
+   "version": "1.0.9",
+   "category": "mal_newver",
+   "score": 0.7236,
+   "js_bytes": 1655,
+   "match_file": "35bac64905ee/react-redux-up@99.0.2/es__components__Context.js"
+  },
+  {
+   "package": "nemo-jaws",
+   "version": "99.99.9",
+   "category": "mal_newname",
+   "score": 0.7059,
+   "js_bytes": 27,
+   "match_file": "5a35b91f8c1a/supply_chain_dummy_test_2@1.0.0/index.js"
+  },
+  {
+   "package": "freo-design-system",
+   "version": "1.0.7",
+   "category": "mal_newver",
+   "score": 0.6934,
+   "js_bytes": 3000,
+   "match_file": "f32c97652b58/parabol-client@9.1.1/index.js"
+  },
+  {
+   "package": "atlaskit-registry",
+   "version": "1.0.9",
+   "category": "mal_newver",
+   "score": 0.6882,
+   "js_bytes": 2218,
+   "match_file": "f989f74cbdf6/acme-diagnostics@1.0.1/index.js"
+  },
+  {
+   "package": "vercel-v0",
+   "version": "999.999.33005",
+   "category": "mal_newver",
+   "score": 0.6685,
+   "js_bytes": 205,
+   "match_file": "f4e049e43297/@b2b-frontend_store@1.0.0/postinstall.js"
+  },
+  {
+   "package": "mender-binary-delta",
+   "version": "1.7.0",
+   "category": "mal_newname",
+   "score": 0.6644,
+   "js_bytes": 78,
+   "match_file": "1b2f65cec5f9/npm-security-testing@1.0.0/index.js"
+  },
+  {
+   "package": "elf-stats-starlit-mitten-980",
+   "version": "1.2.25",
+   "category": "mal_newver",
+   "score": 0.6465,
+   "js_bytes": 1079,
+   "match_file": "5c9b8eb369ca/electron-builder-13@13.7.5/index.js"
+  }
+ ],
+ "size_vs_score_spearman": {
+  "malicious": -0.6823737759566636,
+  "benign": 0.14660028449502135
+ },
+ "tiny_known_malware_scores": [
+  0.0471,
+  0.053,
+  0.112,
+  0.125,
+  0.1687
+ ],
+ "timing": {
+  "packages": 195,
+  "chunks": 395,
+  "scan_seconds_total": 73.3322,
+  "seconds_per_chunk_median": 0.1494,
+  "seconds_per_package_median": 0.2291,
+  "single_chunk_packages": 115,
+  "chunk_bytes_vs_seconds_spearman_single_chunk": 0.9954627949183303
+ }
+}
