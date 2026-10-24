@@ -2,7 +2,7 @@
   "package": "target",
   "version": "1.0.0",
   "score": 0.5906,
-  "seconds": 0.0267,
+  "seconds": 0.0040,
   "matched_packages": [
     { "package": "pkg@1.0.0", "group": "groupA", "ncd": 0.5906, "chunks": 1 }
   ],

@@ -32,6 +32,8 @@ write(os.path.join(refs, "groupB", "pkg@2.0.0", "y.js"), y)
 write(os.path.join(refs, "groupC", "big@1.0.0", "big.js"), big)
 write(os.path.join(refs, "top_level.js"), "module.exports = 'a file directly in the reference folder is its own group';\n")
 write(os.path.join(target, "index.js"), x.replace("hostname", "userInfo().username"))
+run(["-j", "2", "-k", "10", "-o", os.path.join(HERE, "target_report.json"), refs, target],
+    os.path.join(HERE, "target_report.log"))
 for p in ("0", "1"):
     run(["-j", "2", "-p", p, "-k", "10", "-o", os.path.join(HERE, f"target_report_p{p}.json"), refs, target],
         os.path.join(HERE, f"target_report_p{p}.log"))
