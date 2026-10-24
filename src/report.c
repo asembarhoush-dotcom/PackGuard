@@ -98,7 +98,8 @@ static void json_number(FILE *out, double x)
 
 int write_report(FILE *out, const package_report *r)
 {
-    if (out == NULL || r == NULL || (r->chunks == NULL && r->count > 0))
+    if (out == NULL || r == NULL || (r->chunks == NULL && r->count > 0)
+        || (r->matched == NULL && r->matched_count > 0))
         return -1;
 
     fputs("{\n  \"package\": ", out);
@@ -120,6 +121,20 @@ int write_report(FILE *out, const package_report *r)
         fputs(",\n  \"seconds\": ", out);
         json_number(out, r->seconds);
     }
+    if (r->matched != NULL) {
+        fputs(",\n  \"matched_packages\": [", out);
+        for (size_t i = 0; i < r->matched_count; i++) {
+            const report_match *m = &r->matched[i];
+            fputs(i ? ",\n    { \"package\": " : "\n    { \"package\": ", out);
+            json_string(out, m->package);
+            fputs(", \"group\": ", out);
+            json_string(out, m->group);
+            fputs(", \"ncd\": ", out);
+            json_number(out, m->ncd);
+            fprintf(out, ", \"chunks\": %zu }", m->chunks);
+        }
+        fputs(r->matched_count ? "\n  ]" : "]", out);
+    }
     fputs(",\n  \"chunks\": [", out);
     for (size_t i = 0; i < r->count; i++) {
         const report_chunk *c = &r->chunks[i];
@@ -129,6 +144,10 @@ int write_report(FILE *out, const package_report *r)
         json_number(out, c->ncd);
         fputs(", \"match\": { \"file\": ", out);
         json_string(out, c->match_file);
+        if (c->match_package != NULL) {
+            fputs(", \"package\": ", out);
+            json_string(out, c->match_package);
+        }
         fprintf(out, ", \"start\": %zu }", c->match_start);
         if (c->near != NULL && c->near_count > 0) {
             fputs(", \"near\": [", out);

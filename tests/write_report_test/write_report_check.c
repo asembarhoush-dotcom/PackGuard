@@ -29,21 +29,25 @@ int main(int argc, char **argv)
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
         size_t len;
         unsigned char *buf = slurp(path, &len);
-        rows[i] = (report_chunk){names[i], (size_t)i * 4096, 0.25 * i, "ref\"dir\\x.js", 8192, buf, len};
+        rows[i] = (report_chunk){.file = names[i], .start = (size_t)i * 4096, .ncd = 0.25 * i,
+                                 .match_file = "ref\"dir\\x.js", .match_package = i < 3 ? "pkg@1.0.0" : NULL,
+                                 .match_start = 8192, .text = buf, .text_len = len};
     }
     int fails = 0;
 
+    report_match matched[2] = {{"boby_parser@2.2.0", "be8164d46ffb", 0.3187, 7}, {"x\"y", "g", NAN, 1}};
     package_report all = {.package = "@scope/pkg\"q", .version = "1.0.0", .score = 0.0, .has_score = 1,
                           .threshold = 0.5, .has_threshold = 1, .seconds = 1.5, .has_seconds = 1,
-                          .chunks = rows, .count = 4};
+                          .matched = matched, .matched_count = 2, .chunks = rows, .count = 4};
     snprintf(path, sizeof path, "%s/all_chunks.json", dir);
     fails += write_report_file(path, &all) != 0;
 
-    package_report empty = {.package = "empty-pkg", .version = "", .threshold = 0.3, .has_threshold = 1};
+    package_report empty = {.package = "empty-pkg", .version = "", .threshold = 0.3, .has_threshold = 1,
+                            .matched = matched, .matched_count = 0};
     snprintf(path, sizeof path, "%s/no_chunks.json", dir);
     fails += write_report_file(path, &empty) != 0;
 
-    report_chunk bad = {"nan.js", 0, NAN, "r.js", 0, NULL, 0};
+    report_chunk bad = {.file = "nan.js", .ncd = NAN, .match_file = "r.js"};
     package_report nonfinite = {.package = "nan-pkg", .version = "2.0.0", .score = INFINITY, .has_score = 1,
                                 .seconds = NAN, .has_seconds = 1, .chunks = &bad, .count = 1};
     snprintf(path, sizeof path, "%s/non_finite.json", dir);
@@ -58,6 +62,8 @@ int main(int argc, char **argv)
     fails += write_report(stdout, NULL) != -1;
     package_report broken = {.package = "x", .version = "y", .count = 3};
     fails += write_report(stdout, &broken) != -1;
+    package_report broken_matched = {.package = "x", .version = "y", .matched_count = 1};
+    fails += write_report(stdout, &broken_matched) != -1;
     snprintf(path, sizeof path, "%s/no_such_dir/out.json", dir);
     fails += write_report_file(path, &all) != -1;
 

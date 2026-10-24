@@ -1,8 +1,8 @@
-packguard: 4 reference files, 4 chunks, 4 distinct, C(x) cached in 0.0 s on 8 threads
+packguard: 4 reference files, 4 chunks, 4 distinct, 4 packages, loaded in 0.1 s on 8 threads, no prefilter: NCD on every chunk
 packguard:   Z_first.js @0: ncd 0.9962
 packguard:   a.js @0: ncd 0.9876
 packguard:   b.cjs @0: ncd 0.9994
 packguard:   c.mjs @0: ncd 0.9978
 packguard:   sub/deeper/y.js @0: ncd 0.9984
 packguard:   sub/z.js @0: ncd 0.9984
-packguard: tests\collect_files_test\pkg@1.0.0: 6 files, 6 chunks, score 0.9876, 0.1 s
+packguard: tests\collect_files_test\pkg@1.0.0: 6 files, 6 chunks, score 0.9876, 0.1 s, closest code_a_renamed.js (code_a_renamed.js)

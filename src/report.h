@@ -10,12 +10,21 @@ typedef struct {
     double ncd;
 } report_near;
 
+/* One reference package that was the closest match of at least one chunk. */
+typedef struct {
+    const char *package;
+    const char *group;
+    double ncd;
+    size_t chunks;
+} report_match;
+
 /* One scored chunk of the package and the reference chunk closest to it. */
 typedef struct {
     const char *file;
     size_t start;
     double ncd;
     const char *match_file;
+    const char *match_package;
     size_t match_start;
     const unsigned char *text;
     size_t text_len;
@@ -33,6 +42,8 @@ typedef struct {
     int has_threshold;
     double seconds;
     int has_seconds;
+    const report_match *matched;
+    size_t matched_count;
     const report_chunk *chunks;
     size_t count;
 } package_report;
@@ -41,9 +52,12 @@ typedef struct {
  * Writes r to out as the JSON object stage 2 reads:
  * package, version, score (null when has_score is 0), threshold and flagged
  * (only when has_threshold is set; flagged means score <= threshold),
- * seconds (scan time, only when has_seconds is set), then one entry per
- * chunk with file, start, ncd, match {file, start}, near (only when the
- * chunk has near_count > 0: a list of {group, ncd}, closest first) and text.
+ * seconds (scan time, only when has_seconds is set), matched_packages
+ * (only when matched is not NULL: a list of {package, group, ncd, chunks}
+ * in the given order), then one entry per chunk with file, start, ncd,
+ * match {file, package (when match_package is not NULL), start}, near
+ * (only when the chunk has near_count > 0: a list of {group, ncd}, closest
+ * first) and text.
  * r and everything it points to are only borrowed for the call.
  * Strings are escaped per RFC 8259. Chunk text is raw file bytes cut at
  * fixed offsets, so any byte that is not part of a valid UTF-8 sequence is

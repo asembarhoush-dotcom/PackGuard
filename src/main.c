@@ -9,13 +9,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_THREADS 1024
-#define MAX_NEAR    256
+#define MAX_THREADS        1024
+#define MAX_NEAR           256
+#define MAX_CANDIDATES     1000000
+#define DEFAULT_CANDIDATES 256
 
 /* Command-line settings. */
 typedef struct {
     size_t nthreads;
     size_t near_k;
+    size_t candidates;
     double threshold;
     const char *out_file;
     const char *out_dir;
@@ -28,16 +31,19 @@ typedef struct {
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: packguard [-j threads] [-t threshold] [-k groups] [-o report.json | -d report_dir]\n"
-            "                 <reference_dir> <package_path>...\n"
+            "usage: packguard [-j threads] [-p candidates] [-t threshold] [-k groups]\n"
+            "                 [-o report.json | -d report_dir] <reference_dir> <package_path>...\n"
             "  Scores every .js/.cjs/.mjs file of each package_path against every file of\n"
             "  reference_dir by NCD. The references are loaded once for all packages.\n"
             "  -j  worker threads (default: all logical processors)\n"
+            "  -p  LZJD prefilter: run NCD only on this many most similar reference\n"
+            "      chunks per chunk (default %d; 0 scores every reference, exact)\n"
             "  -t  also report whether the score is at or below this threshold\n"
             "  -k  also list, per chunk, the closest reference groups (first folder\n"
             "      below reference_dir) and their lowest NCD, up to this many\n"
             "  -o  write the report of a single package to this file (default: stdout)\n"
-            "  -d  write one report per package to report_dir/<package dir name>.json\n");
+            "  -d  write one report per package to report_dir/<package dir name>.json\n",
+            DEFAULT_CANDIDATES);
 }
 
 /*
@@ -47,7 +53,7 @@ static void usage(void)
  */
 static int parse_args(int argc, char **argv, options *opt)
 {
-    *opt = (options){.nthreads = cpu_count(), .threshold = -1.0};
+    *opt = (options){.nthreads = cpu_count(), .candidates = DEFAULT_CANDIDATES, .threshold = -1.0};
     int i = 1;
     for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
         const char *a = argv[i];
@@ -57,7 +63,7 @@ static int parse_args(int argc, char **argv, options *opt)
         }
         if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0)
             return 1;
-        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodk", a[1]) == NULL) {
+        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkp", a[1]) == NULL) {
             fprintf(stderr, "packguard: bad option %s\n", a);
             return -1;
         }
@@ -77,6 +83,13 @@ static int parse_args(int argc, char **argv, options *opt)
                 return -1;
             }
             opt->near_k = (size_t)n;
+        } else if (a[1] == 'p') {
+            long n = strtol(value, &end, 10);
+            if (*end != '\0' || n < 0 || n > MAX_CANDIDATES) {
+                fprintf(stderr, "packguard: -p needs 0 to %d\n", MAX_CANDIDATES);
+                return -1;
+            }
+            opt->candidates = (size_t)n;
         } else if (a[1] == 't') {
             opt->threshold = strtod(value, &end);
             if (*end != '\0' || opt->threshold < 0.0) {
@@ -192,6 +205,44 @@ static size_t closest_groups(const double *group_best, char *const *names, size_
     return n;
 }
 
+/* qsort() comparator for report_matches: lowest NCD first, then most chunks, then name. */
+static int compare_matches(const void *pa, const void *pb)
+{
+    const report_match *a = pa, *b = pb;
+    if (a->ncd != b->ncd)
+        return a->ncd < b->ncd ? -1 : 1;
+    if (a->chunks != b->chunks)
+        return a->chunks > b->chunks ? -1 : 1;
+    return strcmp(a->package, b->package);
+}
+
+/*
+ * Fills matched with one entry per distinct reference package that was the
+ * closest match of at least one of the count chunks, with its group, its
+ * lowest NCD and how many chunks it matched, sorted by compare_matches().
+ * Names are borrowed from refs. Returns how many entries were written.
+ */
+static size_t matched_packages(const reference_set *refs, const chunk_score *scores, size_t count,
+                               report_match *matched)
+{
+    size_t n = 0;
+    for (size_t s = 0; s < count; s++) {
+        const ref_chunk *m = &refs->refs[scores[s].ref];
+        const char *pkg = refs->package_names[refs->file_package[m->file]];
+        size_t j = 0;
+        while (j < n && matched[j].package != pkg)
+            j++;
+        if (j == n)
+            matched[n++] = (report_match){pkg, refs->group_names[m->group], scores[s].ncd, 0};
+        if (scores[s].ncd < matched[j].ncd)
+            matched[j].ncd = scores[s].ncd;
+        matched[j].chunks++;
+    }
+    if (n > 1)
+        qsort(matched, n, sizeof *matched, compare_matches);
+    return n;
+}
+
 /*
  * Scans one package against refs and writes its report to out_path, or to
  * stdout when out_path is NULL. Progress goes to stderr.
@@ -207,6 +258,7 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
     report_chunk *rows = NULL;
     double *group_best = NULL;
     report_near *nears = NULL;
+    report_match *matched = NULL;
 
     if (collect_files(&targets, pkg) != 0)
         goto done;
@@ -215,7 +267,8 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
         count += targets.items[i].chunks.count;
     scores = malloc((count ? count : 1) * sizeof *scores);
     rows = malloc((count ? count : 1) * sizeof *rows);
-    if (scores == NULL || rows == NULL)
+    matched = malloc((count ? count : 1) * sizeof *matched);
+    if (scores == NULL || rows == NULL || matched == NULL)
         goto done;
     size_t k = opt->near_k < refs->group_count ? opt->near_k : refs->group_count;
     if (k > 0) {
@@ -241,6 +294,7 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
                 .start = c->offset,
                 .ncd = scores[s].ncd,
                 .match_file = relative_to(refs->files.items[m->file].path, opt->ref_dir),
+                .match_package = refs->package_names[refs->file_package[m->file]],
                 .match_start = m->chunk->offset,
                 .text = c->data,
                 .text_len = c->length,
@@ -258,6 +312,7 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
 
     char name[512], version[512];
     package_id(pkg, name, version, sizeof name);
+    size_t matched_count = matched_packages(refs, scores, count, matched);
     double seconds = now_seconds() - t0;
     package_report report = {
         .package = name,
@@ -268,6 +323,8 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
         .has_threshold = opt->threshold >= 0.0,
         .seconds = seconds,
         .has_seconds = 1,
+        .matched = matched,
+        .matched_count = matched_count,
         .chunks = rows,
         .count = count,
     };
@@ -281,13 +338,14 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
         goto done;
     }
     if (count > 0)
-        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f, %.1f s\n",
-                pkg, targets.count, count, best, seconds);
+        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f, %.1f s, closest %s (%s)\n",
+                pkg, targets.count, count, best, seconds, matched[0].package, matched[0].group);
     else
         fprintf(stderr, "packguard: %s: no JavaScript, score null, %.1f s\n", pkg, seconds);
     status = 0;
 
 done:
+    free(matched);
     free(nears);
     free(group_best);
     free(rows);
@@ -316,13 +374,18 @@ int main(int argc, char **argv)
 
     double t0 = now_seconds();
     reference_set refs;
-    if (load_references(&refs, opt.ref_dir, opt.nthreads) != 0) {
+    if (load_references(&refs, opt.ref_dir, opt.nthreads, opt.candidates) != 0) {
         fprintf(stderr, "packguard: loading references failed\n");
         return 1;
     }
-    fprintf(stderr, "packguard: %zu reference files, %zu chunks, %zu distinct, "
-            "C(x) cached in %.1f s on %zu threads\n",
-            refs.files.count, refs.total_chunks, refs.count, now_seconds() - t0, refs.nthreads);
+    fprintf(stderr, "packguard: %zu reference files, %zu chunks, %zu distinct, %zu packages, "
+            "loaded in %.1f s on %zu threads, ",
+            refs.files.count, refs.total_chunks, refs.count, refs.package_count,
+            now_seconds() - t0, refs.nthreads);
+    if (refs.candidates > 0)
+        fprintf(stderr, "LZJD prefilter: NCD on the %zu most similar chunks\n", refs.candidates);
+    else
+        fprintf(stderr, "no prefilter: NCD on every chunk\n");
 
     int failures = 0;
     for (size_t i = 0; i < opt.package_count; i++) {
