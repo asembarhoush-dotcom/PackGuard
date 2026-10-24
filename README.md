@@ -57,7 +57,7 @@ PackGuard/
 │   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face), planned
 ├── data/v1/malware_js_*.zip    # v1 malware set, 16 encrypted zips, see dataset_index.md
 ├── tests/                      # Test inputs and outputs, one folder per function
-├── experiments/                # Configs and result logs per version
+├── experiments/v1/             # v1 detailed test: scripts, results, analysis
 ├── docs/                       # Design notes (memory safety and ownership)
 ├── scripts/build-windows.ps1   # Native Windows build (zig + static liblzma)
 ├── Makefile                    # Linux/macOS build
