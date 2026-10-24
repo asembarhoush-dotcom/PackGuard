@@ -1,0 +1,32 @@
+digest sizes (k = 1024)
+  code_a.js            1024 values
+  code_a_renamed.js    1024 values
+  code_a_minified.js   1024 values
+  code_b.js            1024 values
+  random_16KiB.bin     1024 values
+  zeros_16KiB.bin       180 values
+  empty.bin               0 values (empty)
+
+similarity matrix
+                     code_a. code_a_ code_a_ code_b. random_ zeros_1 empty.b
+code_a.js             1.0000  0.4841  0.4960  0.1824  0.0089  0.0000  0.0000
+code_a_renamed.js     0.4841  1.0000  0.3857  0.1716  0.0089  0.0000  0.0000
+code_a_minified.js    0.4960  0.3857  1.0000  0.1545  0.0089  0.0000  0.0000
+code_b.js             0.1824  0.1716  0.1545  1.0000  0.0089  0.0000  0.0000
+random_16KiB.bin      0.0089  0.0089  0.0089  0.0089  1.0000  0.0000  0.0000
+zeros_16KiB.bin       0.0000  0.0000  0.0000  0.0000  0.0000  1.0000  0.0000
+empty.bin             0.0000  0.0000  0.0000  0.0000  0.0000  0.0000  0.0000
+
+checks
+  PASS same input gives the same digest when the builder is reused
+  PASS a digest is identical to itself
+  PASS empty input: empty digest, similarity 0
+  PASS similarity is symmetric
+  PASS similarity is between 0 and 1
+  PASS digests are strictly ascending (distinct values)
+  PASS 16 KiB of random bytes fills the whole digest
+  PASS 16 KiB of zeros parses into about sqrt(2 * 16384) = 181 phrases
+  PASS renamed copy of code_a is closer than unrelated code_b
+  PASS code is not similar to random or zero bytes
+
+failures: 0

@@ -22,7 +22,10 @@ check(c["utf8_valid.txt"]["text"] == src["utf8_valid.txt"].decode(), "valid UTF-
 check(c["utf8_cut_end.txt"]["text"] == "ends mid emoji ��", "cut sequence -> two U+FFFD")
 check(c["utf8_invalid.txt"]["text"] == "ff:� overlong:�� surrogate:��� above:���� lone_cont:� ok",
       "invalid bytes -> one U+FFFD each")
-check(c["utf8_invalid.txt"]["match"] == {"file": 'ref"dir\\x.js', "start": 8192}, "match object")
+check(c["utf8_invalid.txt"]["match"] == {"file": 'ref"dir\\x.js', "start": 8192}, "match object without package")
+check(c["escapes.txt"]["match"] == {"file": 'ref"dir\\x.js', "package": "pkg@1.0.0", "start": 8192}, "match object with package")
+check(a["matched_packages"] == [{"package": "boby_parser@2.2.0", "group": "be8164d46ffb", "ncd": 0.3187, "chunks": 7},
+                                {"package": 'x"y', "group": "g", "ncd": None, "chunks": 1}], "matched_packages list")
 check([x["start"] for x in a["chunks"]] == [0, 4096, 8192, 12288], "chunk starts")
 check([x["ncd"] for x in a["chunks"]] == [0.0, 0.25, 0.5, 0.75], "chunk ncd values")
 
@@ -34,5 +37,6 @@ check(n["seconds"] is None, "non-finite seconds -> null")
 u = load("not_flagged.json")
 check(u["flagged"] is False and u["score"] == 0.9, "score above threshold not flagged")
 check("seconds" not in u and "seconds" not in e, "seconds omitted when not set")
+check(e["matched_packages"] == [] and "matched_packages" not in u, "matched_packages empty or omitted")
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

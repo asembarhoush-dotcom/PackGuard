@@ -4,5 +4,6 @@
   "score": null,
   "threshold": 0.3000,
   "flagged": false,
+  "matched_packages": [],
   "chunks": []
 }
