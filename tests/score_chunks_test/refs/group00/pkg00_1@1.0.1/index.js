@@ -1,0 +1,2 @@
+=>};return} else {
+) {JSON.stringify(data)  =>} else {  awaitoptions.timeoutoptions.timeoutprocess.envJSON.stringify(data)await42module.exportsrequire('fs')} else {require('fs')let'use strict';) {callback(null, value)module.exports'use strict';require('fs')} else {letconstfor (let i = 0; i < n; i++)require('fs')  constcallback(null, value)letawaitawaitawait};) {for (let i = 0; i < n; i++)'use strict';42

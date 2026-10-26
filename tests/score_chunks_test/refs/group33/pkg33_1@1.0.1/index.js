@@ -1,0 +1,3 @@
+returnoptions.timeout};module.exports42if (options.timeoutrequire('fs')if () {  42callback(null, value)) {JSON.stringify(data)return};module.exports42'use strict';JSON.stringify(data)for (let i = 0; i < n; i++)JSON.stringify(data)};  callback(null, value)
+} else {42const'use strict';} else {};} else {JSON.stringify(data)  42};returnrequire('fs')42'use strict';};) {for (let i = 0; i < n; i++)callback(null, value)if (  let
+awaitreturnoptions.timeout

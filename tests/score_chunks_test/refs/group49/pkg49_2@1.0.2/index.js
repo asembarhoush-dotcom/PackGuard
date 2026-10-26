@@ -1,0 +1,2 @@
+constawaitreturn};letfor (let i = 0; i < n; i++)returncallback(null, value)returnJSON.stringify(data)module.exportsreturnreturn) {for (let i = 0; i < n; i++)JSON.stringify(data)require('fs')} else {
+return42process.envcallback(null, value)) {JSON.stringify(data)process.envconstJSON.stringify(data)

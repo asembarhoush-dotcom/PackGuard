@@ -1,0 +1,1 @@
+const=>letreturnoptions.timeoutoptions.timeoutif (42JSON.stringify(data)require('fs')require('fs')options.timeoutconst} else {callback(null, value)returnrequire('fs')functionconstfor (let i = 0; i < n; i++)42returnfunctionrequire('fs')

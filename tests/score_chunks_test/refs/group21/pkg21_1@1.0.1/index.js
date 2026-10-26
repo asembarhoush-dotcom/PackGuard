@@ -1,0 +1,3 @@
+module.exports};};42} else {  letprocess.envprocess.envreturn  JSON.stringify(data)  module.exportsJSON.stringify(data)JSON.stringify(data)if (functionconstfunctionoptions.timeoutawaitoptions.timeout  };constrequire('fs')  if ('use strict';if (return};};) {'use strict';
+returnfor (let i = 0; i < n; i++)callback(null, value)  ) {let42awaitfunctionfunctionrequire('fs')constletfunction
+module.exportscallback(null, value)for (let i = 0; i < n; i++)=>  require('fs')require('fs')options.timeoutmodule.exportsoptions.timeoutreturn  if (constprocess.envprocess.envoptions.timeoutif (constletoptions.timeoutcallback(null, value)

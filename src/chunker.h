@@ -36,7 +36,24 @@ typedef struct {
  */
 int split_file(const char *path, chunk_list *out);
 
-/* Frees everything split_file() allocated and resets list to empty. */
+/*
+ * Describes size bytes in buf as chunks, exactly as split_file() does for a
+ * file with that content. Takes ownership of buf, which must come from
+ * malloc() (or be NULL when size is 0), and frees it on failure.
+ *
+ * Returns 0 on success. On failure returns -1, sets errno and leaves out empty.
+ */
+int split_buffer(unsigned char *buf, size_t size, chunk_list *out);
+
+/*
+ * Reads the whole file at path into a malloc'd buffer and stores its size
+ * in *size_out. The caller frees the buffer.
+ *
+ * Returns the buffer, or NULL with errno set on failure.
+ */
+unsigned char *read_file(const char *path, size_t *size_out);
+
+/* Frees everything split_file() or split_buffer() allocated and resets list to empty. */
 void free_chunks(chunk_list *list);
 
 #endif

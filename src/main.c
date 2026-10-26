@@ -13,6 +13,8 @@
 #define MAX_NEAR           256
 #define MAX_CANDIDATES     1000000
 #define DEFAULT_CANDIDATES 256
+#define BATCH_PACKAGES     64
+#define BATCH_CHUNKS       256
 
 /* Command-line settings. */
 typedef struct {
@@ -33,8 +35,9 @@ static void usage(void)
     fprintf(stderr,
             "usage: packguard [-j threads] [-p candidates] [-t threshold] [-k groups]\n"
             "                 [-o report.json | -d report_dir] <reference_dir> <package_path>...\n"
-            "  Scores every .js/.cjs/.mjs file of each package_path against every file of\n"
-            "  reference_dir by NCD. The references are loaded once for all packages.\n"
+            "  Scores every .js/.cjs/.mjs file and the root package.json install scripts\n"
+            "  of each package_path against every file of reference_dir by NCD. The\n"
+            "  references are loaded once for all packages.\n"
             "  -j  worker threads (default: all logical processors)\n"
             "  -p  LZJD prefilter: run NCD only on this many most similar reference\n"
             "      chunks per chunk (default %d; 0 scores every reference, exact)\n"
@@ -243,51 +246,51 @@ static size_t matched_packages(const reference_set *refs, const chunk_score *sco
     return n;
 }
 
+/* One package of a batch: its path, its files, where its chunks start in the batch and its time. */
+typedef struct {
+    const char *path;
+    file_list targets;
+    size_t first;
+    size_t count;
+    double seconds;
+    int loaded;
+} package_job;
+
 /*
- * Scans one package against refs and writes its report to out_path, or to
- * stdout when out_path is NULL. Progress goes to stderr.
+ * Builds the report of a scored package and writes it to
+ * opt->out_dir/<package folder>.json, to opt->out_file, or to stdout.
+ * scores, and nears and near_counts when k > 0, hold the package's own
+ * chunks in walk order. Progress goes to stderr.
  * Returns 0 on success, -1 on failure.
  */
-static int scan_package(reference_set *refs, const options *opt, const char *pkg,
-                        const char *out_path)
+static int write_package(const reference_set *refs, const options *opt, const package_job *job,
+                         const chunk_score *scores, report_near *nears, const size_t *near_counts,
+                         size_t k)
 {
-    double t0 = now_seconds();
     int status = -1;
-    file_list targets = {0};
-    chunk_score *scores = NULL;
-    report_chunk *rows = NULL;
-    double *group_best = NULL;
-    report_near *nears = NULL;
-    report_match *matched = NULL;
-
-    if (collect_files(&targets, pkg) != 0)
+    size_t count = job->count;
+    const char *pkg = job->path;
+    char *out_path = NULL;
+    report_chunk *rows = malloc((count ? count : 1) * sizeof *rows);
+    report_match *matched = malloc((count ? count : 1) * sizeof *matched);
+    if (rows == NULL || matched == NULL)
         goto done;
-    size_t count = 0;
-    for (size_t i = 0; i < targets.count; i++)
-        count += targets.items[i].chunks.count;
-    scores = malloc((count ? count : 1) * sizeof *scores);
-    rows = malloc((count ? count : 1) * sizeof *rows);
-    matched = malloc((count ? count : 1) * sizeof *matched);
-    if (scores == NULL || rows == NULL || matched == NULL)
-        goto done;
-    size_t k = opt->near_k < refs->group_count ? opt->near_k : refs->group_count;
-    if (k > 0) {
-        group_best = malloc(refs->group_count * sizeof *group_best);
-        nears = malloc((count ? count : 1) * k * sizeof *nears);
-        if (group_best == NULL || nears == NULL)
+    if (opt->out_dir != NULL) {
+        size_t blen;
+        const char *base = last_component(pkg, &blen);
+        size_t len = strlen(opt->out_dir) + blen + 7;
+        out_path = malloc(len);
+        if (out_path == NULL)
             goto done;
+        snprintf(out_path, len, "%s/%.*s.json", opt->out_dir, (int)blen, base);
     }
 
     double best = 0.0;
     size_t s = 0;
-    for (size_t i = 0; i < targets.count; i++) {
-        const char *file = relative_to(targets.items[i].path, pkg);
-        for (size_t j = 0; j < targets.items[i].chunks.count; j++, s++) {
-            const file_chunk *c = &targets.items[i].chunks.chunks[j];
-            if (score_chunk(refs, c, &scores[s], group_best) != 0) {
-                fprintf(stderr, "packguard: %s: scoring %s failed\n", pkg, file);
-                goto done;
-            }
+    for (size_t i = 0; i < job->targets.count; i++) {
+        const char *file = relative_to(job->targets.items[i].path, pkg);
+        for (size_t j = 0; j < job->targets.items[i].chunks.count; j++, s++) {
+            const file_chunk *c = &job->targets.items[i].chunks.chunks[j];
             const ref_chunk *m = &refs->refs[scores[s].ref];
             rows[s] = (report_chunk){
                 .file = file,
@@ -301,8 +304,7 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
             };
             if (k > 0) {
                 rows[s].near = nears + s * k;
-                rows[s].near_count = closest_groups(group_best, refs->group_names,
-                                                    refs->group_count, k, nears + s * k);
+                rows[s].near_count = near_counts[s];
             }
             if (s == 0 || scores[s].ncd < best)
                 best = scores[s].ncd;
@@ -313,7 +315,6 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
     char name[512], version[512];
     package_id(pkg, name, version, sizeof name);
     size_t matched_count = matched_packages(refs, scores, count, matched);
-    double seconds = now_seconds() - t0;
     package_report report = {
         .package = name,
         .version = version,
@@ -321,16 +322,17 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
         .has_score = count > 0,
         .threshold = opt->threshold,
         .has_threshold = opt->threshold >= 0.0,
-        .seconds = seconds,
+        .seconds = job->seconds,
         .has_seconds = 1,
         .matched = matched,
         .matched_count = matched_count,
         .chunks = rows,
         .count = count,
     };
-    if (out_path != NULL) {
-        if (write_report_file(out_path, &report) != 0) {
-            fprintf(stderr, "packguard: %s: %s\n", out_path, strerror(errno));
+    const char *dest = out_path ? out_path : opt->out_file;
+    if (dest != NULL) {
+        if (write_report_file(dest, &report) != 0) {
+            fprintf(stderr, "packguard: %s: %s\n", dest, strerror(errno));
             goto done;
         }
     } else if (write_report(stdout, &report) != 0 || fflush(stdout) != 0) {
@@ -339,28 +341,125 @@ static int scan_package(reference_set *refs, const options *opt, const char *pkg
     }
     if (count > 0)
         fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f, %.1f s, closest %s (%s)\n",
-                pkg, targets.count, count, best, seconds, matched[0].package, matched[0].group);
+                pkg, job->targets.count, count, best, job->seconds, matched[0].package, matched[0].group);
     else
-        fprintf(stderr, "packguard: %s: no JavaScript, score null, %.1f s\n", pkg, seconds);
+        fprintf(stderr, "packguard: %s: no JavaScript or install scripts, score null, %.1f s\n", pkg,
+                job->seconds);
     status = 0;
 
 done:
+    free(out_path);
     free(matched);
-    free(nears);
-    free(group_best);
     free(rows);
-    free(scores);
-    free_files(&targets);
     return status;
 }
 
 /*
+ * Scans packages[0..n) as one batch: loads every package, scores all their
+ * chunks together with score_chunks() (so with enough chunks each thread
+ * takes whole chunks and no thread waits on another), then writes each
+ * package's report in order. With -k the chunks are scored BATCH_CHUNKS at a
+ * time, which bounds the per-group results held at once. A package's
+ * seconds are its load time plus the scoring time of its chunks.
+ * Returns the number of packages that failed.
+ */
+static int scan_batch(reference_set *refs, const options *opt, char **packages, size_t n)
+{
+    int failures = 0;
+    size_t k = opt->near_k < refs->group_count ? opt->near_k : refs->group_count;
+    package_job *jobs = calloc(n, sizeof *jobs);
+    const file_chunk **chunks = NULL;
+    chunk_score *scores = NULL;
+    double *seconds = NULL;
+    double *group_rows = NULL;
+    report_near *nears = NULL;
+    size_t *near_counts = NULL;
+    int scored = 0;
+    if (jobs == NULL)
+        goto report;
+
+    size_t total = 0;
+    for (size_t j = 0; j < n; j++) {
+        double t0 = now_seconds();
+        jobs[j].path = packages[j];
+        if (collect_files(&jobs[j].targets, packages[j]) == 0) {
+            jobs[j].loaded = 1;
+            jobs[j].first = total;
+            for (size_t i = 0; i < jobs[j].targets.count; i++)
+                jobs[j].count += jobs[j].targets.items[i].chunks.count;
+            total += jobs[j].count;
+        }
+        jobs[j].seconds = now_seconds() - t0;
+    }
+
+    size_t slice = k > 0 ? BATCH_CHUNKS : (total ? total : 1);
+    chunks = malloc((total ? total : 1) * sizeof *chunks);
+    scores = malloc((total ? total : 1) * sizeof *scores);
+    seconds = calloc(total ? total : 1, sizeof *seconds);
+    if (k > 0) {
+        group_rows = malloc(slice * refs->group_count * sizeof *group_rows);
+        nears = malloc((total ? total : 1) * k * sizeof *nears);
+        near_counts = malloc((total ? total : 1) * sizeof *near_counts);
+    }
+    if (chunks == NULL || scores == NULL || seconds == NULL
+        || (k > 0 && (group_rows == NULL || nears == NULL || near_counts == NULL)))
+        goto report;
+
+    size_t s = 0;
+    for (size_t j = 0; j < n; j++)
+        for (size_t i = 0; jobs[j].loaded && i < jobs[j].targets.count; i++)
+            for (size_t c = 0; c < jobs[j].targets.items[i].chunks.count; c++)
+                chunks[s++] = &jobs[j].targets.items[i].chunks.chunks[c];
+
+    scored = 1;
+    for (size_t at = 0; at < total; at += slice) {
+        size_t m = total - at < slice ? total - at : slice;
+        if (score_chunks(refs, chunks + at, m, scores + at, group_rows, seconds + at) != 0) {
+            fprintf(stderr, "packguard: scoring a batch of %zu packages failed\n", n);
+            scored = 0;
+            break;
+        }
+        for (size_t i = 0; k > 0 && i < m; i++)
+            near_counts[at + i] = closest_groups(group_rows + i * refs->group_count, refs->group_names,
+                                                 refs->group_count, k, nears + (at + i) * k);
+    }
+
+report:
+    for (size_t j = 0; j < n; j++) {
+        if (jobs == NULL || !jobs[j].loaded || !scored) {
+            fprintf(stderr, "packguard: %s: scan failed\n", packages[j]);
+            failures++;
+            continue;
+        }
+        for (size_t c = 0; c < jobs[j].count; c++)
+            jobs[j].seconds += seconds[jobs[j].first + c];
+        if (write_package(refs, opt, &jobs[j], scores + jobs[j].first,
+                          k > 0 ? nears + jobs[j].first * k : NULL,
+                          k > 0 ? near_counts + jobs[j].first : NULL, k) != 0) {
+            fprintf(stderr, "packguard: %s: scan failed\n", packages[j]);
+            failures++;
+        }
+    }
+    for (size_t j = 0; jobs != NULL && j < n; j++)
+        free_files(&jobs[j].targets);
+    free(near_counts);
+    free(nears);
+    free(group_rows);
+    free(seconds);
+    free(scores);
+    free(chunks);
+    free(jobs);
+    return failures;
+}
+
+/*
  * Stage 1 of PackGuard. Loads the known-malware references once, caching
- * C(x) for each distinct chunk on all threads, then scans each package in
- * turn: every chunk is scored by its lowest NCD to any reference and the
- * package score is the lowest chunk score. Reports are written by
- * write_report(). A package that fails is skipped and the exit status is 1;
- * a usage error exits with 2. Stage 2 (the AI filter) is not wired in yet.
+ * C(x) for each distinct chunk on a pool of threads that stays up for the
+ * whole run, then scans the packages BATCH_PACKAGES at a time: every chunk
+ * is scored by its lowest NCD to any reference and the package score is the
+ * lowest chunk score. Reports are written by write_report() in the order the
+ * packages were given. A package that fails is skipped and the exit status
+ * is 1; a usage error exits with 2. Stage 2 (the AI filter) is not wired in yet.
  */
 int main(int argc, char **argv)
 {
@@ -388,25 +487,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "no prefilter: NCD on every chunk\n");
 
     int failures = 0;
-    for (size_t i = 0; i < opt.package_count; i++) {
-        const char *pkg = opt.packages[i];
-        char *out_path = NULL;
-        if (opt.out_dir != NULL) {
-            size_t blen;
-            const char *base = last_component(pkg, &blen);
-            size_t len = strlen(opt.out_dir) + blen + 7;
-            out_path = malloc(len);
-            if (out_path == NULL) {
-                failures++;
-                continue;
-            }
-            snprintf(out_path, len, "%s/%.*s.json", opt.out_dir, (int)blen, base);
-        }
-        if (scan_package(&refs, &opt, pkg, out_path ? out_path : opt.out_file) != 0) {
-            fprintf(stderr, "packguard: %s: scan failed\n", pkg);
-            failures++;
-        }
-        free(out_path);
+    for (size_t i = 0; i < opt.package_count; i += BATCH_PACKAGES) {
+        size_t n = opt.package_count - i < BATCH_PACKAGES ? opt.package_count - i : BATCH_PACKAGES;
+        failures += scan_batch(&refs, &opt, opt.packages + i, n);
     }
 
     free_references(&refs);

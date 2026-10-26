@@ -1,0 +1,3 @@
+if (const42
+functionrequire('fs')returnconst} else {function  'use strict';function  =>  callback(null, value)} else {module.exportsoptions.timeout42let  for (let i = 0; i < n; i++)module.exportsfor (let i = 0; i < n; i++)for (let i = 0; i < n; i++)JSON.stringify(data)letreturnlet  await42return) {return=>for (let i = 0; i < n; i++)let} else {constcallback(null, value)returnprocess.envconstif (options.timeout'use strict';constfor (let i = 0; i < n; i++)) {function} else {constoptions.timeout'use strict';42'use strict';};letfor (let i = 0; i < n; i++)options.timeout  require('fs')=>} else {functionconst
+} else {callback(null, value)

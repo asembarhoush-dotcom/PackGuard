@@ -1,0 +1,3 @@
+) {if (
+};  ) {const} else {for (let i = 0; i < n; i++)const=>functionconst  ) {callback(null, value)functionlet42} else {let} else {42returnoptions.timeoutfunctionJSON.stringify(data)'use strict';returnconstrequire('fs')) {require('fs')process.env
+};const'use strict';};require('fs')returnreturnmodule.exports  for (let i = 0; i < n; i++)) {return'use strict';awaitfor (let i = 0; i < n; i++)letmodule.exports};constfunctionreturnfor (let i = 0; i < n; i++)JSON.stringify(data)for (let i = 0; i < n; i++)return} else {for (let i = 0; i < n; i++)

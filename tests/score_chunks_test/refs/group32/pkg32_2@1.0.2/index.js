@@ -1,0 +1,4 @@
+constprocess.envletoptions.timeoutfor (let i = 0; i < n; i++)require('fs')JSON.stringify(data)} else {if (42let  functionreturnletfor (let i = 0; i < n; i++)JSON.stringify(data)callback(null, value)for (let i = 0; i < n; i++)returnJSON.stringify(data)  await) {await'use strict';) {functioncallback(null, value)process.env
+require('fs')if (JSON.stringify(data)) {functionreturn  process.envconst} else {process.env
+constfor (let i = 0; i < n; i++)} else {const  require('fs')letrequire('fs')returnJSON.stringify(data)letif (module.exports
+functionfunction};returnreturncallback(null, value)awaitif (module.exports

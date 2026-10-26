@@ -1,0 +1,16 @@
+{
+ "config": "s3_n3_noscripts",
+ "shape_cap": 3,
+ "name_cap": 3,
+ "scripts": false,
+ "ref_packages": 5390,
+ "ref_shapes": 4453,
+ "ref_files": 31392,
+ "ref_chunks": 141497,
+ "ref_distinct": 50003,
+ "load_seconds": 40.5,
+ "wall_seconds": 308.8,
+ "max_rss_mib": 1271,
+ "exit": 0,
+ "threads": 4
+}

@@ -1,0 +1,1 @@
+require('fs')'use strict';42letrequire('fs')function) {require('fs')if ('use strict';if (require('fs')letcallback(null, value)const  42options.timeout) {};returnrequire('fs')functionawait'use strict';constprocess.envif (JSON.stringify(data)'use strict';JSON.stringify(data)function

@@ -1,0 +1,8 @@
+'use strict';const) {  await42  42JSON.stringify(data)function
+if (42returnmodule.exportsletawait  require('fs')if (} else {=>callback(null, value)let42} else {
+options.timeoutif (=>functionprocess.env};callback(null, value)JSON.stringify(data)process.env) {};if (module.exportsfor (let i = 0; i < n; i++)=>module.exportsconstrequire('fs')'use strict';const'use strict';require('fs')
+} else {};require('fs')require('fs')require('fs')functionreturnmodule.exports) {if (functionJSON.stringify(data)process.envawaitprocess.envmodule.exportsif (awaitprocess.envmodule.exports) {} else {for (let i = 0; i < n; i++)process.envcallback(null, value)returnconst42process.envmodule.exportsprocess.env=>} else {options.timeoutfunctionawait};module.exports};require('fs')) {JSON.stringify(data)constfor (let i = 0; i < n; i++)} else {'use strict';options.timeoutJSON.stringify(data)functionoptions.timeout'use strict';for (let i = 0; i < n; i++)const} else {await} else {  for (let i = 0; i < n; i++)  for (let i = 0; i < n; i++)letmodule.exports  42  module.exports
+return) {functionawaitfor (let i = 0; i < n; i++)=>functioncallback(null, value)};await=>options.timeoutfunctioncallback(null, value)
+returnletoptions.timeout) {callback(null, value)module.exports=>'use strict';process.env'use strict';letif (
+awaitJSON.stringify(data)awaitJSON.stringify(data)) {
+) {=>functioncallback(null, value)if (letoptions.timeoutawait  } else {return};require('fs')

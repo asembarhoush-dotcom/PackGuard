@@ -1,0 +1,3 @@
+require('fs')process.envawaitconst};callback(null, value)
+options.timeoutfor (let i = 0; i < n; i++)callback(null, value)) {JSON.stringify(data)=>=>'use strict';JSON.stringify(data)) {returnconst};functionletif (function) {  callback(null, value)functionfor (let i = 0; i < n; i++)options.timeout};options.timeoutif (if (for (let i = 0; i < n; i++)JSON.stringify(data)JSON.stringify(data)awaitif (
+if (} else {returnfor (let i = 0; i < n; i++)callback(null, value)awaitawait'use strict';for (let i = 0; i < n; i++)=>42callback(null, value)options.timeoutprocess.envconstletawaitprocess.envif (if (awaitreturnrequire('fs')

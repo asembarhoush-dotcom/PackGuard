@@ -1,0 +1,4 @@
+module.exports};callback(null, value)};letlet
+'use strict';42callback(null, value)} else {if (  process.envoptions.timeout  JSON.stringify(data)module.exportsJSON.stringify(data)JSON.stringify(data)awaitif (functionfunctionawaitoptions.timeout};constrequire('fs')if (if (return};};'use strict';
+returnprocess.envfor (let i = 0; i < n; i++)callback(null, value)  letreturnawait  42  returnmodule.exportsawaitfunctionrequire('fs')constletfunction
+for (let i = 0; i < n; i++)module.exportscallback(null, value)for (let i = 0; i < n; i++)=>  require('fs')module.exportsreturn  if (constoptions.timeoutprocess.envprocess.envoptions.timeout};constletcallback(null, value)  JSON.stringify(data)callback(null, value)=>process.envprocess.env  for (let i = 0; i < n; i++)require('fs')callback(null, value)

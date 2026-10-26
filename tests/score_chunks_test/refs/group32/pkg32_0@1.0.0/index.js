@@ -1,0 +1,1 @@
+constprocess.env} else {require('fs')} else {if (  module.exportsfunctionreturnletfor (let i = 0; i < n; i++)awaitJSON.stringify(data)process.envcallback(null, value)for (let i = 0; i < n; i++)callback(null, value)

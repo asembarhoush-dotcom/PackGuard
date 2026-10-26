@@ -1,0 +1,15 @@
+{
+ "config": "s1_n3",
+ "shape_cap": 1,
+ "name_cap": 3,
+ "ref_packages": 5401,
+ "ref_shapes": 5401,
+ "ref_files": 29821,
+ "ref_chunks": 123198,
+ "ref_distinct": 49086,
+ "load_seconds": 26.0,
+ "wall_seconds": 639.1,
+ "max_rss_mib": 847,
+ "exit": 0,
+ "threads": 4
+}

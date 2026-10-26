@@ -1,0 +1,2 @@
+42callback(null, value)  42) {} else {process.envconstconst) {callback(null, value)for (let i = 0; i < n; i++)) {await=>module.exports=>if (if (  ) {constoptions.timeout42options.timeout42constconst'use strict';42'use strict';if (};};return
+awaitfunction42  const) {require('fs')'use strict';for (let i = 0; i < n; i++)'use strict';42

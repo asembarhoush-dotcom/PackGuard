@@ -1,0 +1,16 @@
+{
+ "config": "s3_n3_latest",
+ "shape_cap": 3,
+ "name_cap": 3,
+ "order": "latest",
+ "ref_packages": 6417,
+ "ref_shapes": 5261,
+ "ref_files": 34302,
+ "ref_chunks": 149809,
+ "ref_distinct": 53617,
+ "load_seconds": 31.1,
+ "wall_seconds": 297.3,
+ "max_rss_mib": 1345,
+ "exit": 0,
+ "threads": 4
+}

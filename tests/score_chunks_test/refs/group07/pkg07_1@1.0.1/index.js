@@ -1,0 +1,3 @@
+
+for (let i = 0; i < n; i++)require('fs')=>42options.timeoutreturnconstcallback(null, value)letfor (let i = 0; i < n; i++)} else {awaitoptions.timeoutreturnJSON.stringify(data)process.envfor (let i = 0; i < n; i++)return=>const};await};constif (const=>JSON.stringify(data)
+callback(null, value)};returnoptions.timeoutletif (function42JSON.stringify(data)42options.timeoutreturnoptions.timeoutoptions.timeout=>returnif (returncallback(null, value)require('fs')options.timeout} else {awaitcallback(null, value)};process.envrequire('fs')callback(null, value)letoptions.timeout};require('fs')} else {callback(null, value)callback(null, value)module.exportsletletoptions.timeoutoptions.timeoutJSON.stringify(data)'use strict';42process.envawaitletletcallback(null, value)const

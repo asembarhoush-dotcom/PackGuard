@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #define COMPRESS_PRESET    6u
-#define COMPRESS_DICT_SIZE (1u << 20)
+#define COMPRESS_DICT_SIZE (64u * 1024u)
 #define COMPRESS_LC        3u
 #define COMPRESS_SINK_SIZE (16u * 1024u)
 
@@ -22,7 +22,10 @@ typedef struct {
  * Sets up c as a raw LZMA2 encoder (no .xz container or headers) starting
  * from the given preset, then overriding the dictionary size and lc.
  * Use COMPRESS_PRESET, COMPRESS_DICT_SIZE and COMPRESS_LC for the README's
- * v1 settings: preset 6 (extreme off), 1 MiB dictionary, lc = 3.
+ * settings: preset 6 (extreme off), 64 KiB dictionary, lc = 3. The
+ * dictionary holds a whole reference chunk plus a whole target chunk (at
+ * most 2 x SPLIT_THRESHOLD bytes), so no match is lost, while the
+ * encoder stays small enough (about 2 MiB) to sit in the CPU cache.
  * The encoder's memory is allocated once here and reused by every call.
  * c points into itself (filters[0].options is &c->options), so it must stay
  * at the same address until compressor_free(); never copy or move it.

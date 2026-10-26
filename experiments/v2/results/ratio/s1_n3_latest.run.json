@@ -1,0 +1,16 @@
+{
+ "config": "s1_n3_latest",
+ "shape_cap": 1,
+ "name_cap": 3,
+ "order": "latest",
+ "ref_packages": 5411,
+ "ref_shapes": 5411,
+ "ref_files": 30725,
+ "ref_chunks": 129616,
+ "ref_distinct": 51351,
+ "load_seconds": 28.5,
+ "wall_seconds": 295.5,
+ "max_rss_mib": 1224,
+ "exit": 0,
+ "threads": 4
+}

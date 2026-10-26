@@ -1,0 +1,1 @@
+constJSON.stringify(data)};} else {awaitawait} else {) {module.exportscallback(null, value)) {) {letfunctionawaitif (=>JSON.stringify(data)};) {JSON.stringify(data)JSON.stringify(data)for (let i = 0; i < n; i++)42'use strict';=>require('fs')callback(null, value)returnrequire('fs')process.envrequire('fs')

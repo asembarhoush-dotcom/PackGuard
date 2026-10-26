@@ -1,0 +1,2 @@
+require('fs')=>=>};return) {JSON.stringify(data)  =>} else {  awaitawaitoptions.timeoutprocess.envJSON.stringify(data)require('fs')};} else {require('fs')} else {require('fs')let'use strict';await) {callback(null, value)'use strict';  
+require('fs')require('fs')} else {letconstfor (let i = 0; i < n; i++)};  callback(null, value)letawait};for (let i = 0; i < n; i++)const'use strict';42process.envcallback(null, value)'use strict';

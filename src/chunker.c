@@ -61,21 +61,15 @@ static size_t chunk_count(size_t size)
     return (size - CHUNK_SIZE + CHUNK_STEP - 1) / CHUNK_STEP + 1;
 }
 
-int split_file(const char *path, chunk_list *out)
+unsigned char *read_file(const char *path, size_t *size_out)
 {
-    if (out == NULL) {
+    if (path == NULL || size_out == NULL) {
         errno = EINVAL;
-        return -1;
+        return NULL;
     }
-    *out = (chunk_list){0};
-    if (path == NULL) {
-        errno = EINVAL;
-        return -1;
-    }
-
     FILE *fp = fopen(path, "rb");
     if (fp == NULL)
-        return -1;
+        return NULL;
 
     size_t size = 0;
     unsigned char *buf = read_all(fp, &size);
@@ -83,6 +77,37 @@ int split_file(const char *path, chunk_list *out)
     fclose(fp);
     if (buf == NULL) {
         errno = saved_errno;
+        return NULL;
+    }
+    *size_out = size;
+    return buf;
+}
+
+int split_file(const char *path, chunk_list *out)
+{
+    if (out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    *out = (chunk_list){0};
+
+    size_t size = 0;
+    unsigned char *buf = read_file(path, &size);
+    if (buf == NULL)
+        return -1;
+    return split_buffer(buf, size, out);
+}
+
+int split_buffer(unsigned char *buf, size_t size, chunk_list *out)
+{
+    if (out == NULL) {
+        free(buf);
+        errno = EINVAL;
+        return -1;
+    }
+    *out = (chunk_list){0};
+    if (buf == NULL && size > 0) {
+        errno = EINVAL;
         return -1;
     }
 

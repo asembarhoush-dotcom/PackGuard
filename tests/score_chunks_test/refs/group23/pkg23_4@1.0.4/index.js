@@ -1,0 +1,3 @@
+} else {} else {constfunctionoptions.timeout} else {};=>options.timeoutJSON.stringify(data)awaitrequire('fs')JSON.stringify(data)process.envfor (let i = 0; i < n; i++)) {require('fs')process.env
+letif (function} else {if ('use strict';
+functionfunctionletoptions.timeoutconst  functionfor (let i = 0; i < n; i++)};functionJSON.stringify(data)) {42};constawaitreturnprocess.envreturnoptions.timeoutawaitmodule.exports'use strict';process.env

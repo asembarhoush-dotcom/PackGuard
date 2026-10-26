@@ -1,0 +1,5 @@
+};letrequire('fs')callback(null, value)'use strict';module.exportsif (require('fs')42require('fs')
+};};process.env) {process.envrequire('fs')=>module.exportsrequire('fs')'use strict';process.envprocess.env'use strict';function};if (constlet};for (let i = 0; i < n; i++)require('fs')module.exportsJSON.stringify(data)  JSON.stringify(data)) {'use strict';if (  await
+require('fs')callback(null, value)process.envfunction) {} else {42) {constoptions.timeoutJSON.stringify(data)process.env
+callback(null, value)) {letoptions.timeout};module.exportsprocess.env=>awaitconstfunctionif (return};  await  module.exports
+functionJSON.stringify(data)module.exports=>JSON.stringify(data)) {=>JSON.stringify(data)module.exportsif (module.exports'use strict';process.env} else {'use strict';};options.timeoutprocess.envcallback(null, value)};functionif (process.envreturnfor (let i = 0; i < n; i++)await=>letprocess.env  require('fs')  process.envJSON.stringify(data)

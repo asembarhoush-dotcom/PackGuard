@@ -1,0 +1,3 @@
+JSON.stringify(data)awaitconstoptions.timeoutfunctionif (function=>
+awaitconst};} else {for (let i = 0; i < n; i++)letoptions.timeoutJSON.stringify(data)require('fs')let=>) {awaitmodule.exports'use strict';functionrequire('fs')JSON.stringify(data)const) {require('fs')returnmodule.exportsawait) {callback(null, value)returnprocess.envrequire('fs')process.env=>module.exportsmodule.exportsoptions.timeout42} else {} else {=>for (let i = 0; i < n; i++)process.envprocess.env
+callback(null, value)  options.timeoutreturn

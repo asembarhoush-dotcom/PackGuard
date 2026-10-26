@@ -1,0 +1,4 @@
+process.envmodule.exportslet
+for (let i = 0; i < n; i++)if (functionprocess.env  42  module.exports  } else {};
+) {process.envcallback(null, value)callback(null, value)require('fs')
+) {42constletfor (let i = 0; i < n; i++)JSON.stringify(data)process.envmodule.exportsif (module.exportsfunctionif (process.envawaitoptions.timeoutmodule.exportsJSON.stringify(data)process.env  process.envconst} else {} else {returnlet) {functionJSON.stringify(data)callback(null, value)for (let i = 0; i < n; i++)if () {=>if ('use strict';=>callback(null, value)awaitoptions.timeoutoptions.timeoutJSON.stringify(data)) {) {'use strict';} else {callback(null, value)constlet} else {  options.timeout

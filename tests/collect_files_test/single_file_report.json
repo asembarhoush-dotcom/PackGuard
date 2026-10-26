@@ -2,7 +2,7 @@
   "package": "single_file.txt",
   "version": "",
   "score": 1.0000,
-  "seconds": 0.0107,
+  "seconds": 0.0036,
   "matched_packages": [
     { "package": "code_a_renamed.js", "group": "code_a_renamed.js", "ncd": 1.0000, "chunks": 1 }
   ],

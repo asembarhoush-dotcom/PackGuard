@@ -1,0 +1,2 @@
+await) {const};=>callback(null, value)
+options.timeoutfor (let i = 0; i < n; i++)} else {for (let i = 0; i < n; i++)) {require('fs')JSON.stringify(data)=>=>'use strict';} else {return=>};require('fs')functionlet  ) {function) {  callback(null, value)

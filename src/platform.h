@@ -46,6 +46,27 @@ int thread_start(thread_handle *t, void *(*fn)(void *), void *arg);
 /* Waits for a thread started by thread_start() to finish and releases it. */
 void thread_join(thread_handle *t);
 
+/* Worker threads that are started once and then run one job after another. */
+typedef struct thread_pool thread_pool;
+
+/*
+ * Starts nthreads (at least 1) worker threads that sleep until pool_run()
+ * hands them a job. Release the pool with pool_free().
+ *
+ * Returns the pool, or NULL if memory runs out or a thread cannot start.
+ */
+thread_pool *pool_create(size_t nthreads);
+
+/*
+ * Runs fn(arg, i) on worker i for every i below the pool's thread count,
+ * all at the same time, and returns once every call has finished. Jobs run
+ * one at a time: pool_run() must not be called from two threads at once.
+ */
+void pool_run(thread_pool *pool, void (*fn)(void *arg, size_t worker), void *arg);
+
+/* Wakes and joins every worker of pool and frees it. NULL is ignored. */
+void pool_free(thread_pool *pool);
+
 /* Returns what path names, following symbolic links. */
 path_kind path_type(const char *path);
 

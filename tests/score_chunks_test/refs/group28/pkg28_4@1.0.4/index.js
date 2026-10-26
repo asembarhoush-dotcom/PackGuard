@@ -1,0 +1,2 @@
+letrequire('fs')callback(null, value)'use strict';module.exportsletif (JSON.stringify(data)require('fs')callback(null, value)constfunction42
+};=>process.envprocess.env42require('fs')=>module.exports'use strict';require('fs')'use strict';process.envoptions.timeoutprocess.envrequire('fs')function};callback(null, value)};if (const

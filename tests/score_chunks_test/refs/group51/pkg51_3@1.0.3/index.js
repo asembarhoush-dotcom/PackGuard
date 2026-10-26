@@ -1,0 +1,3 @@
+'use strict';if (JSON.stringify(data)callback(null, value)module.exportsfunction'use strict';if (if (callback(null, value)) {=>if (functioncallback(null, value)if (
+callback(null, value)JSON.stringify(data)42for (let i = 0; i < n; i++)options.timeoutawait=>) {process.env=>require('fs')module.exportsfunctionletlet) {functioncallback(null, value)};) {return'use strict';  module.exportsawait=>'use strict';} else {} else {await
+42  process.envfunction

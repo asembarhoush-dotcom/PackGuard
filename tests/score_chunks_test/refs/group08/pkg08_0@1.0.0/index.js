@@ -1,0 +1,3 @@
+if (awaitprocess.env=>require('fs')process.envJSON.stringify(data)module.exportsreturn=>};constrequire('fs')if (JSON.stringify(data)process.env=>42function
+  
+=>  require('fs')options.timeoutprocess.envrequire('fs')=>letconst  if (callback(null, value)function) {JSON.stringify(data)options.timeout};  =>let) {letconstif (=>  'use strict';=>'use strict';callback(null, value)letreturnfor (let i = 0; i < n; i++)if (if (const};  42module.exportscallback(null, value)awaitJSON.stringify(data)process.envoptions.timeout

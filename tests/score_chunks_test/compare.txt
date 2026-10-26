@@ -1,0 +1,1 @@
+targets 12, reports identical in batch and split mode (apart from seconds): 12
