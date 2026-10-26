@@ -1,0 +1,15 @@
+{
+ "config": "s10_n3",
+ "shape_cap": 10,
+ "name_cap": 3,
+ "ref_packages": 7233,
+ "ref_shapes": 5265,
+ "ref_files": 35389,
+ "ref_chunks": 148666,
+ "ref_distinct": 55257,
+ "load_seconds": 32.8,
+ "wall_seconds": 676.3,
+ "max_rss_mib": 1001,
+ "exit": 0,
+ "threads": 4
+}

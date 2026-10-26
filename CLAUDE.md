@@ -46,9 +46,10 @@ typedef struct {
 - `data/` is stored byte for byte (`-text` in `.gitattributes`) so line-ending conversion never changes NCD results.
 - v1 uses static ratios: at most 3 packages per code shape and at most 3 versions per package name, earliest published first. Only sample zips of 1 MiB or less were used.
 - v1 goes for speed with the fewest features and static ratios; selectors and tuned ratios come in later versions, judged on accuracy vs time.
+- The v2 malware set is committed as 16 encrypted zips, `data/v2/malware_js_0.zip` to `malware_js_f.zip` (password `infected`), built by `experiments/v2/scripts/build_dataset.py`. It holds 6,500 DataDog npm `malicious_intent` packages with their install scripts stored as `install_scripts.txt`, never as `package.json`. Its ratio was tuned on a time split: at most 1 package per code shape and 3 versions per package name, newest published first.
 - Handle malware only inside WSL, decrypt archives in memory, and never run `node`, `npm` or Windows Script Host on a sample.
 - Download DataDog samples as individual files from `raw.githubusercontent.com` with parallel connections; a git clone of that repository runs at about 180 KiB/s.
-- v2 candidates: `compromised_lib` samples (need a diff against the clean version), zips over 1 MiB, install-script-only packages, Backstabber's Knife Collection and MalwareBench (access on request), and benign npm packages.
+- Still to collect: `compromised_lib` samples (need a diff against the clean version), zips over 1 MiB, Backstabber's Knife Collection and MalwareBench (access on request), and a larger benign set. Install-script-only packages are in v2.
 
 ## Commits and pull requests
 
