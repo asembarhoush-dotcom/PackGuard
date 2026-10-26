@@ -1,0 +1,6 @@
+process.env) {=>functionprocess.envif (return=>options.timeoutfunction42return) {awaitmodule.exportsletfunctionJSON.stringify(data)} else {constawaitrequire('fs')functionprocess.envlet};await};let=>letJSON.stringify(data)for (let i = 0; i < n; i++)options.timeoutif (} else {) {constreturn
+
+};) {options.timeoutreturnfor (let i = 0; i < n; i++)options.timeoutfunction
+=>};returnfor (let i = 0; i < n; i++)42process.env'use strict';'use strict';  for (let i = 0; i < n; i++)'use strict';42=>for (let i = 0; i < n; i++)} else {=>42await  require('fs')JSON.stringify(data)process.envlet
+};const) {module.exports} else {} else {module.exportsfor (let i = 0; i < n; i++)42if (let=>};  module.exportsJSON.stringify(data)const};returnfunction};functionmodule.exports'use strict';require('fs')options.timeoutletoptions.timeoutoptions.timeout};42function=>if (require('fs')callback(null, value)'use strict';if (letcallback(null, value)
+42returnprocess.envrequire('fs')JSON.stringify(data)if (if (const) {require('fs')  callback(null, value)const

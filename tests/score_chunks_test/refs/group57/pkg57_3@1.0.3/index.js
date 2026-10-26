@@ -1,0 +1,1 @@
+returnawaitoptions.timeoutconst} else {'use strict';functionif (JSON.stringify(data)for (let i = 0; i < n; i++)  } else {};42=>functionmodule.exportsJSON.stringify(data)if ('use strict';if (awaitlet=>=>let42'use strict';constoptions.timeout  callback(null, value)) {callback(null, value)42'use strict';require('fs')options.timeoutletletrequire('fs')42require('fs')

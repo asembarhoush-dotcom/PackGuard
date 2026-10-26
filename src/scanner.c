@@ -1,6 +1,7 @@
 #include "scanner.h"
 
 #include "compresser.h"
+#include "manifest.h"
 #include "platform.h"
 #include "prefilter.h"
 
@@ -12,7 +13,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WORK_BLOCK 64u
+#define WORK_BLOCK   64u
+#define SCORE_BLOCK  16u
+#define SCRIPTS_FILE "install_scripts.txt"
+
+_Static_assert(COMPRESS_DICT_SIZE >= 2u * SPLIT_THRESHOLD,
+               "the LZMA dictionary must hold a whole reference chunk and a whole target chunk");
 
 /* Work shared by all threads in one parallel pass over the references. */
 typedef struct {
@@ -29,9 +35,8 @@ typedef struct {
     uint32_t *digests;
     uint32_t *digest_len;
     const size_t *digest_first;
-    const uint32_t *target_digest;
-    size_t target_digest_len;
-    ref_rank *ranks;
+    const lzjd_index *index;
+    uint32_t *slots;
 } pass;
 
 /* A group that held a dropped copy of the kept reference chunk at index kept. */
@@ -40,15 +45,35 @@ typedef struct {
     size_t group;
 } extra_pair;
 
-/* One worker thread: its own encoder, its thread and its best results. */
+/* One pool thread's own encoder, LZJD scratch, ranking buffers and best results. */
 struct scan_worker {
     compressor comp;
-    thread_handle thread;
     pass *work;
     chunk_score best;
     double *group_best;
     lzjd_builder builder;
+    lzjd_query query;
+    size_t *subset;
 };
+
+/* A run of pass body on every pool thread. */
+typedef struct {
+    reference_set *set;
+    pass *work;
+    void *(*body)(void *);
+} pass_job;
+
+/* Target chunks that the pool threads take one at a time and score on their own. */
+typedef struct {
+    reference_set *set;
+    const file_chunk *const *chunks;
+    size_t count;
+    chunk_score *out;
+    double *group_best;
+    double *seconds;
+    atomic_size_t next;
+    atomic_int failed;
+} chunk_batch;
 
 /* A reference chunk with its content hash, used only while removing repeats. */
 typedef struct {
@@ -70,18 +95,23 @@ static int is_js(const char *name)
     return 0;
 }
 
+/* Returns 1 if the last component of path is exactly name, otherwise 0. */
+static int has_name(const char *path, const char *name)
+{
+    size_t len = strlen(path);
+    size_t start = len;
+    while (start > 0 && !is_path_sep(path[start - 1]))
+        start--;
+    return strcmp(path + start, name) == 0;
+}
+
 /*
- * Reads and splits the file at path and appends it to list.
- * Files with no chunks (empty files) are not added.
+ * Appends path and its chunks to list, taking ownership of chunks.
+ * Chunk lists with no chunks are freed and not added.
  * Returns 0 on success, -1 on failure.
  */
-static int add_file(file_list *list, const char *path)
+static int add_chunks(file_list *list, const char *path, chunk_list chunks)
 {
-    chunk_list chunks;
-    if (split_file(path, &chunks) != 0) {
-        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
-        return -1;
-    }
     if (chunks.count == 0) {
         free_chunks(&chunks);
         return 0;
@@ -108,19 +138,68 @@ static int add_file(file_list *list, const char *path)
 }
 
 /*
- * Adds path to list; top is 1 for the path the caller passed, which is
- * added even when its name is not .js, .cjs or .mjs.
+ * Reads and splits the file at path and appends it to list.
+ * Files with no chunks (empty files) are not added.
  * Returns 0 on success, -1 on failure.
  */
-static int collect(file_list *list, const char *path, int top)
+static int add_file(file_list *list, const char *path)
+{
+    chunk_list chunks;
+    if (split_file(path, &chunks) != 0) {
+        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    return add_chunks(list, path, chunks);
+}
+
+/*
+ * Reads the package.json at path, keeps only its install-script text (see
+ * install_scripts()) and appends that to list under the same path.
+ * A package.json with no install scripts is not added.
+ * Returns 0 on success, -1 on failure.
+ */
+static int add_manifest(file_list *list, const char *path)
+{
+    size_t len = 0;
+    unsigned char *json = read_file(path, &len);
+    if (json == NULL) {
+        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    unsigned char *text;
+    size_t text_len;
+    int rc = install_scripts(json, len, &text, &text_len);
+    free(json);
+    if (rc != 0)
+        return -1;
+    chunk_list chunks;
+    if (split_buffer(text, text_len, &chunks) != 0)
+        return -1;
+    return add_chunks(list, path, chunks);
+}
+
+/*
+ * Adds path to list; depth is 0 for the path the caller passed, which is
+ * added even when its name is not .js, .cjs or .mjs. A file named
+ * package.json contributes only its install scripts (see install_scripts()),
+ * and only when it is the path itself or directly inside it, since npm runs
+ * the scripts of the package root only. A file named install_scripts.txt,
+ * which is how reference sets store install scripts as they keep no
+ * package.json, is added whole.
+ * Returns 0 on success, -1 on failure.
+ */
+static int collect(file_list *list, const char *path, int depth)
 {
     path_kind kind = path_type(path);
     if (kind == PATH_MISSING) {
         fprintf(stderr, "packguard: %s: no such file or directory\n", path);
         return -1;
     }
-    if (kind == PATH_FILE)
-        return top || is_js(path) ? add_file(list, path) : 0;
+    if (kind == PATH_FILE) {
+        if (has_name(path, "package.json"))
+            return depth <= 1 ? add_manifest(list, path) : 0;
+        return depth == 0 || is_js(path) || has_name(path, SCRIPTS_FILE) ? add_file(list, path) : 0;
+    }
     if (kind != PATH_DIR)
         return 0;
 
@@ -143,7 +222,7 @@ static int collect(file_list *list, const char *path, int top)
             break;
         }
         snprintf(child, len, "%s%s%s", path, sep, names[i]);
-        rc = collect(list, child, 0);
+        rc = collect(list, child, depth + 1);
         free(child);
     }
     free_names(names, n);
@@ -152,7 +231,7 @@ static int collect(file_list *list, const char *path, int top)
 
 int collect_files(file_list *list, const char *path)
 {
-    return collect(list, path, 1);
+    return collect(list, path, 0);
 }
 
 void free_files(file_list *list)
@@ -354,34 +433,24 @@ static void *digest_worker(void *arg)
 }
 
 /*
- * Thread body for ranking references: claims WORK_BLOCK references at a
- * time and stores each one's LZJD similarity to the target in p->ranks.
+ * Thread body for building the index: claims WORK_BLOCK references at a time
+ * and stores, for each value of their packed digests, its position in
+ * p->index->values in p->slots.
  */
-static void *similarity_worker(void *arg)
+static void *slot_worker(void *arg)
 {
     struct scan_worker *w = arg;
     pass *p = w->work;
     for (;;) {
         size_t begin = atomic_fetch_add(&p->next, WORK_BLOCK);
-        if (begin >= p->count || atomic_load(&p->failed))
+        if (begin >= p->count)
             break;
         size_t end = begin + WORK_BLOCK < p->count ? begin + WORK_BLOCK : p->count;
-        for (size_t i = begin; i < end; i++) {
-            double s = lzjd_similarity(p->target_digest, p->target_digest_len,
-                                       p->digests + p->digest_first[i], p->digest_len[i]);
-            p->ranks[i] = (ref_rank){s, i};
-        }
+        for (size_t i = begin; i < end; i++)
+            for (size_t j = 0; j < p->digest_len[i]; j++)
+                p->slots[p->digest_first[i] + j] = lzjd_index_find(p->index, p->digests[p->digest_first[i] + j]);
     }
     return NULL;
-}
-
-/* qsort() comparator that puts the most similar references first, earlier ones first on ties. */
-static int compare_ranks(const void *pa, const void *pb)
-{
-    const ref_rank *a = pa, *b = pb;
-    if (a->similarity != b->similarity)
-        return a->similarity > b->similarity ? -1 : 1;
-    return a->ref < b->ref ? -1 : a->ref > b->ref;
 }
 
 /*
@@ -396,9 +465,43 @@ static double ncd(size_t cx, size_t cy, size_t cy_given_x)
 }
 
 /*
- * Thread body for scoring one target chunk: claims WORK_BLOCK references at
+ * Scores the target of p against candidates begin..end (positions in
+ * p->subset when it is set, otherwise reference indexes) with encoder comp.
+ * Keeps the lowest NCD in *best (the earliest reference on ties) and, when
+ * p->want_groups, the lowest NCD per group in group_best.
+ * Returns 0 on success, -1 if compression fails.
+ */
+static int score_range(const pass *p, compressor *comp, size_t begin, size_t end,
+                       chunk_score *best, double *group_best)
+{
+    for (size_t pos = begin; pos < end; pos++) {
+        size_t i = p->subset ? p->subset[pos] : pos;
+        const file_chunk *r = p->refs[i].chunk;
+        size_t given;
+        if (compressed_size_given(comp, r->data, r->length, p->target->data, p->target->length, &given) != 0)
+            return -1;
+        double d = ncd(p->refs[i].csize, p->target_csize, given);
+        if (d < best->ncd || (d == best->ncd && i < best->ref))
+            *best = (chunk_score){d, i};
+        if (p->want_groups) {
+            const ref_chunk *ref = &p->refs[i];
+            if (d < group_best[ref->group])
+                group_best[ref->group] = d;
+            for (size_t e = 0; e < ref->extra_count; e++) {
+                size_t g = p->extra_groups[ref->extra_first + e];
+                if (d < group_best[g])
+                    group_best[g] = d;
+            }
+        }
+    }
+    return 0;
+}
+
+/*
+ * Thread body for scoring one target chunk: claims SCORE_BLOCK candidates at
  * a time and keeps the lowest NCD it sees in w->best (the earliest reference
- * on ties).
+ * on ties). The small block keeps all threads busy on the few hundred
+ * candidates the prefilter leaves.
  */
 static void *score_worker(void *arg)
 {
@@ -409,57 +512,38 @@ static void *score_worker(void *arg)
         for (size_t g = 0; g < p->group_count; g++)
             w->group_best[g] = DBL_MAX;
     for (;;) {
-        size_t begin = atomic_fetch_add(&p->next, WORK_BLOCK);
+        size_t begin = atomic_fetch_add(&p->next, SCORE_BLOCK);
         if (begin >= p->count || atomic_load(&p->failed))
             break;
-        size_t end = begin + WORK_BLOCK < p->count ? begin + WORK_BLOCK : p->count;
-        for (size_t pos = begin; pos < end; pos++) {
-            size_t i = p->subset ? p->subset[pos] : pos;
-            const file_chunk *r = p->refs[i].chunk;
-            size_t given;
-            if (compressed_size_given(&w->comp, r->data, r->length,
-                                      p->target->data, p->target->length, &given) != 0) {
-                atomic_store(&p->failed, 1);
-                break;
-            }
-            double d = ncd(p->refs[i].csize, p->target_csize, given);
-            if (d < w->best.ncd || (d == w->best.ncd && i < w->best.ref))
-                w->best = (chunk_score){d, i};
-            if (p->want_groups) {
-                const ref_chunk *ref = &p->refs[i];
-                if (d < w->group_best[ref->group])
-                    w->group_best[ref->group] = d;
-                for (size_t e = 0; e < ref->extra_count; e++) {
-                    size_t g = p->extra_groups[ref->extra_first + e];
-                    if (d < w->group_best[g])
-                        w->group_best[g] = d;
-                }
-            }
+        size_t end = begin + SCORE_BLOCK < p->count ? begin + SCORE_BLOCK : p->count;
+        if (score_range(p, &w->comp, begin, end, &w->best, w->group_best) != 0) {
+            atomic_store(&p->failed, 1);
+            break;
         }
     }
     return NULL;
 }
 
+/* Pool job that runs a pass_job's body on the calling pool thread's worker. */
+static void run_body(void *arg, size_t worker)
+{
+    pass_job *job = arg;
+    struct scan_worker *w = &job->set->workers[worker];
+    w->work = job->work;
+    job->body(w);
+    w->work = NULL;
+}
+
 /*
- * Runs body on every worker at once and waits for all of them.
- * Returns 0 on success, -1 if a thread could not start or a worker failed.
+ * Runs body on every pool thread at once and waits for all of them.
+ * Returns 0 on success, -1 if a worker failed.
  */
 static int run_pass(reference_set *set, pass *p, void *(*body)(void *))
 {
     atomic_store(&p->next, 0);
     atomic_store(&p->failed, 0);
-    size_t started = 0;
-    for (; started < set->nthreads; started++) {
-        set->workers[started].work = p;
-        if (thread_start(&set->workers[started].thread, body, &set->workers[started]) != 0) {
-            atomic_store(&p->failed, 1);
-            break;
-        }
-    }
-    for (size_t i = 0; i < started; i++)
-        thread_join(&set->workers[i].thread);
-    for (size_t i = 0; i < set->nthreads; i++)
-        set->workers[i].work = NULL;
+    pass_job job = {set, p, body};
+    pool_run(set->pool, run_body, &job);
     return atomic_load(&p->failed) ? -1 : 0;
 }
 
@@ -547,36 +631,57 @@ static int assign_names(const reference_set *set, const char *dir,
 }
 
 /*
- * Computes the LZJD digest of every kept reference on all threads and packs
- * the digests end to end in set->digests (digest_first and digest_len
- * locate each one), then allocates the per-chunk ranking buffers.
+ * Computes the LZJD digest of every kept reference on all threads, packs the
+ * digests end to end and turns them into set->index (the slot lookups also
+ * run on all threads). Only set->digest_len outlives the call. Then gives
+ * every worker its own query buffers and candidate list.
  * Returns 0 on success, -1 on failure.
  */
 static int build_digests(reference_set *set)
 {
-    set->digests = malloc(set->count * LZJD_K * sizeof *set->digests);
+    int rc = -1;
+    uint32_t *digests = malloc(set->count * LZJD_K * sizeof *digests);
+    size_t *first = malloc(set->count * sizeof *first);
+    uint32_t *slots = NULL;
     set->digest_len = malloc(set->count * sizeof *set->digest_len);
-    set->digest_first = malloc(set->count * sizeof *set->digest_first);
-    set->ranks = malloc(set->count * sizeof *set->ranks);
-    set->subset = malloc(set->count * sizeof *set->subset);
-    if (set->digests == NULL || set->digest_len == NULL || set->digest_first == NULL
-        || set->ranks == NULL || set->subset == NULL)
-        return -1;
-    pass p = {.refs = set->refs, .count = set->count, .digests = set->digests,
-              .digest_len = set->digest_len};
+    if (digests == NULL || first == NULL || set->digest_len == NULL)
+        goto done;
+    pass p = {.refs = set->refs, .count = set->count, .digests = digests, .digest_len = set->digest_len};
     if (run_pass(set, &p, digest_worker) != 0)
-        return -1;
+        goto done;
 
     size_t pos = 0;
     for (size_t i = 0; i < set->count; i++) {
-        memmove(set->digests + pos, set->digests + i * LZJD_K, set->digest_len[i] * sizeof *set->digests);
-        set->digest_first[i] = pos;
+        memmove(digests + pos, digests + i * LZJD_K, set->digest_len[i] * sizeof *digests);
+        first[i] = pos;
         pos += set->digest_len[i];
     }
-    uint32_t *packed = realloc(set->digests, (pos ? pos : 1) * sizeof *packed);
-    if (packed != NULL)
-        set->digests = packed;
-    return 0;
+    if (lzjd_index_values(&set->index, digests, pos, set->digest_len, set->count) != 0)
+        goto done;
+    slots = malloc((pos ? pos : 1) * sizeof *slots);
+    if (slots == NULL)
+        goto done;
+    pass s = {.refs = set->refs, .count = set->count, .digests = digests, .digest_len = set->digest_len,
+              .digest_first = first, .index = &set->index, .slots = slots};
+    if (run_pass(set, &s, slot_worker) != 0)
+        goto done;
+    free(digests);
+    digests = NULL;
+    if (lzjd_index_fill(&set->index, slots, first) != 0)
+        goto done;
+
+    for (size_t i = 0; i < set->nthreads; i++) {
+        set->workers[i].subset = malloc(set->candidates * sizeof *set->workers[i].subset);
+        if (set->workers[i].subset == NULL || lzjd_query_init(&set->workers[i].query, set->count) != 0)
+            goto done;
+    }
+    rc = 0;
+
+done:
+    free(slots);
+    free(first);
+    free(digests);
+    return rc;
 }
 
 int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates)
@@ -593,8 +698,13 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
         if (compressor_init(&set->workers[set->nthreads].comp, COMPRESS_PRESET,
                             COMPRESS_DICT_SIZE, COMPRESS_LC) != 0)
             goto fail;
+    set->pool = pool_create(nthreads);
+    if (set->pool == NULL) {
+        fprintf(stderr, "packguard: could not start %zu threads\n", nthreads);
+        goto fail;
+    }
 
-    if (collect(&set->files, dir, 1) != 0)
+    if (collect(&set->files, dir, 0) != 0)
         goto fail;
     for (size_t i = 0; i < set->files.count; i++)
         set->total_chunks += set->files.items[i].chunks.count;
@@ -645,28 +755,102 @@ fail:
     return -1;
 }
 
+/*
+ * Puts in w->subset the set->candidates references whose LZJD digests are
+ * most similar to chunk's (see lzjd_top()), using worker w's scratch space.
+ * Returns 0 on success, -1 if memory runs out.
+ */
+static int pick_candidates(const reference_set *set, struct scan_worker *w, const file_chunk *chunk)
+{
+    uint32_t digest[LZJD_K];
+    long n = lzjd_digest(&w->builder, chunk->data, chunk->length, digest);
+    if (n < 0)
+        return -1;
+    lzjd_top(&set->index, &w->query, digest, (size_t)n, set->candidates, w->subset);
+    return 0;
+}
+
+/*
+ * Scores chunk on the calling thread alone with worker w's encoder and
+ * buffers, exactly as score_chunk() does across all threads: the same
+ * candidates, the same lowest NCD and the same tie rule. When group_best is
+ * not NULL it receives set->group_count per-group results.
+ * Returns 0 on success, -1 on failure.
+ */
+static int score_alone(const reference_set *set, struct scan_worker *w, const file_chunk *chunk,
+                       chunk_score *out, double *group_best)
+{
+    pass p = {.refs = set->refs, .count = set->candidates ? set->candidates : set->count,
+              .target = chunk, .group_count = set->group_count, .extra_groups = set->extra_groups,
+              .want_groups = group_best != NULL, .subset = set->candidates ? w->subset : NULL};
+    if (compressed_size(&w->comp, chunk->data, chunk->length, &p.target_csize) != 0)
+        return -1;
+    if (set->candidates > 0 && pick_candidates(set, w, chunk) != 0)
+        return -1;
+    *out = (chunk_score){DBL_MAX, SIZE_MAX};
+    if (group_best != NULL)
+        for (size_t g = 0; g < set->group_count; g++)
+            group_best[g] = DBL_MAX;
+    if (score_range(&p, &w->comp, 0, p.count, out, group_best) != 0)
+        return -1;
+    return out->ref == SIZE_MAX ? -1 : 0;
+}
+
+/* Pool job: each thread takes the next chunk of a chunk_batch and scores it alone. */
+static void batch_worker(void *arg, size_t worker)
+{
+    chunk_batch *b = arg;
+    struct scan_worker *w = &b->set->workers[worker];
+    for (;;) {
+        size_t i = atomic_fetch_add(&b->next, 1);
+        if (i >= b->count || atomic_load(&b->failed))
+            break;
+        double t0 = now_seconds();
+        double *row = b->group_best ? b->group_best + i * b->set->group_count : NULL;
+        if (score_alone(b->set, w, b->chunks[i], &b->out[i], row) != 0) {
+            atomic_store(&b->failed, 1);
+            break;
+        }
+        if (b->seconds != NULL)
+            b->seconds[i] = now_seconds() - t0;
+    }
+}
+
+int score_chunks(reference_set *set, const file_chunk *const *chunks, size_t count,
+                 chunk_score *out, double *group_best, double *seconds)
+{
+    if (set == NULL || set->count == 0 || (chunks == NULL && count > 0) || (out == NULL && count > 0))
+        return -1;
+    if (count < set->nthreads) {
+        for (size_t i = 0; i < count; i++) {
+            double t0 = now_seconds();
+            double *row = group_best ? group_best + i * set->group_count : NULL;
+            if (score_chunk(set, chunks[i], &out[i], row) != 0)
+                return -1;
+            if (seconds != NULL)
+                seconds[i] = now_seconds() - t0;
+        }
+        return 0;
+    }
+    chunk_batch b = {.set = set, .chunks = chunks, .count = count, .out = out,
+                     .group_best = group_best, .seconds = seconds};
+    atomic_init(&b.next, 0);
+    atomic_init(&b.failed, 0);
+    pool_run(set->pool, batch_worker, &b);
+    return atomic_load(&b.failed) ? -1 : 0;
+}
+
 int score_chunk(reference_set *set, const file_chunk *chunk, chunk_score *out, double *group_best)
 {
     if (set == NULL || set->count == 0 || chunk == NULL || out == NULL)
         return -1;
-    if (set->candidates > 0) {
-        uint32_t digest[LZJD_K];
-        long n = lzjd_digest(&set->workers[0].builder, chunk->data, chunk->length, digest);
-        if (n < 0)
-            return -1;
-        pass r = {.refs = set->refs, .count = set->count, .digests = set->digests,
-                  .digest_len = set->digest_len, .digest_first = set->digest_first,
-                  .target_digest = digest, .target_digest_len = (size_t)n, .ranks = set->ranks};
-        if (run_pass(set, &r, similarity_worker) != 0)
-            return -1;
-        qsort(set->ranks, set->count, sizeof *set->ranks, compare_ranks);
-        for (size_t i = 0; i < set->candidates; i++)
-            set->subset[i] = set->ranks[i].ref;
-    }
+    struct scan_worker *lead = &set->workers[0];
+    if (set->candidates > 0 && pick_candidates(set, lead, chunk) != 0)
+        return -1;
     pass p = {.refs = set->refs, .count = set->candidates ? set->candidates : set->count,
               .target = chunk, .group_count = set->group_count, .extra_groups = set->extra_groups,
-              .want_groups = group_best != NULL, .subset = set->candidates ? set->subset : NULL};
-    if (compressed_size(&set->workers[0].comp, chunk->data, chunk->length, &p.target_csize) != 0)
+              .want_groups = group_best != NULL, .subset = set->candidates ? lead->subset : NULL};
+    if (compressed_size(&lead->comp, chunk->data, chunk->length, &p.target_csize) != 0)
         return -1;
     if (run_pass(set, &p, score_worker) != 0)
         return -1;
@@ -692,11 +876,14 @@ void free_references(reference_set *set)
 {
     if (set == NULL)
         return;
+    pool_free(set->pool);
     for (size_t i = 0; i < set->nthreads; i++)
         compressor_free(&set->workers[i].comp);
     if (set->workers != NULL) {
         for (size_t i = 0; i < set->nthreads; i++) {
             free(set->workers[i].group_best);
+            lzjd_query_free(&set->workers[i].query);
+            free(set->workers[i].subset);
             lzjd_builder_free(&set->workers[i].builder);
         }
     }
@@ -709,11 +896,8 @@ void free_references(reference_set *set)
     free(set->package_names);
     free(set->file_package);
     free(set->extra_groups);
-    free(set->digests);
+    lzjd_index_free(&set->index);
     free(set->digest_len);
-    free(set->digest_first);
-    free(set->ranks);
-    free(set->subset);
     free(set->refs);
     free_files(&set->files);
     *set = (reference_set){0};

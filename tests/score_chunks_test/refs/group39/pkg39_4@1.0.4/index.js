@@ -1,0 +1,3 @@
+process.env) {if (=>functionprocess.envif (callback(null, value)=>} else {
+options.timeoutmodule.exportsfunction42) {awaitmodule.exportsfunction} else {constawaitfunctionlet42};await};let=>JSON.stringify(data)options.timeout} else {=>) {const
+await};) {options.timeoutfor (let i = 0; i < n; i++)options.timeoutfunctionreturnJSON.stringify(data)42process.env'use strict';'use strict';  'use strict';) {42=>for (let i = 0; i < n; i++)} else {=>42await  awaitrequire('fs')callback(null, value)

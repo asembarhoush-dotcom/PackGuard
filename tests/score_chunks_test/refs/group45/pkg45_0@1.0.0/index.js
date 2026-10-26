@@ -1,0 +1,2 @@
+) {require('fs')};  ) {require('fs')const
+} else {} else {for (let i = 0; i < n; i++)functionconst  functionletprocess.env} else {let} else {require('fs')42return'use strict';constrequire('fs')) {require('fs')

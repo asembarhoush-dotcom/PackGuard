@@ -1,0 +1,2 @@
+references 3000, digest values 1912849, distinct 17691
+candidate lists checked 1500, different from the full sort 0

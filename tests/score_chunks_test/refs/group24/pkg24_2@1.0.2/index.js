@@ -1,0 +1,7 @@
+=>options.timeoutmodule.exportsprocess.envmodule.exports'use strict';if (  process.envmodule.exportsconst=>require('fs')} else {function
+if (=>) {
+) {42letcallback(null, value)letfunctionJSON.stringify(data)module.exportsreturn  
+} else {  const) {'use strict';module.exports42
+for (let i = 0; i < n; i++)options.timeout} else {constcallback(null, value)callback(null, value)42awaitconstreturnprocess.envfor (let i = 0; i < n; i++)module.exportscallback(null, value)for (let i = 0; i < n; i++)const} else {letif ('use strict';require('fs')options.timeout  let} else {) {callback(null, value)) {process.env} else {const
+options.timeout  require('fs')42require('fs')for (let i = 0; i < n; i++)42return} else {  process.env'use strict';'use strict';for (let i = 0; i < n; i++)};require('fs')  JSON.stringify(data)options.timeout'use strict';) {callback(null, value)JSON.stringify(data)if (
+awaitcallback(null, value)if (const4242letrequire('fs')) {awaitfor (let i = 0; i < n; i++)module.exports42callback(null, value)42'use strict';42if (=>process.env} else {JSON.stringify(data)=>constlet  callback(null, value)awaitawaitfor (let i = 0; i < n; i++)process.env) {require('fs')module.exportsoptions.timeout'use strict';};for (let i = 0; i < n; i++)

@@ -95,6 +95,49 @@ void thread_join(thread_handle *t)
     t->handle = NULL;
 }
 
+typedef CRITICAL_SECTION pool_mutex;
+typedef CONDITION_VARIABLE pool_cond;
+
+/* Prepares a mutex and the two condition variables of a pool. */
+static void sync_init(pool_mutex *m, pool_cond *a, pool_cond *b)
+{
+    InitializeCriticalSection(m);
+    InitializeConditionVariable(a);
+    InitializeConditionVariable(b);
+}
+
+/* Releases what sync_init() prepared. */
+static void sync_free(pool_mutex *m, pool_cond *a, pool_cond *b)
+{
+    (void)a;
+    (void)b;
+    DeleteCriticalSection(m);
+}
+
+/* Locks m. */
+static void mutex_lock(pool_mutex *m)
+{
+    EnterCriticalSection(m);
+}
+
+/* Unlocks m. */
+static void mutex_unlock(pool_mutex *m)
+{
+    LeaveCriticalSection(m);
+}
+
+/* Unlocks m, sleeps until c is signalled and locks m again. */
+static void cond_wait(pool_cond *c, pool_mutex *m)
+{
+    SleepConditionVariableCS(c, m, INFINITE);
+}
+
+/* Wakes every thread waiting on c. */
+static void cond_wake_all(pool_cond *c)
+{
+    WakeAllConditionVariable(c);
+}
+
 path_kind path_type(const char *path)
 {
     DWORD attr = GetFileAttributesA(path);
@@ -190,6 +233,49 @@ void thread_join(thread_handle *t)
     pthread_join(t->id, NULL);
 }
 
+typedef pthread_mutex_t pool_mutex;
+typedef pthread_cond_t pool_cond;
+
+/* Prepares a mutex and the two condition variables of a pool. */
+static void sync_init(pool_mutex *m, pool_cond *a, pool_cond *b)
+{
+    pthread_mutex_init(m, NULL);
+    pthread_cond_init(a, NULL);
+    pthread_cond_init(b, NULL);
+}
+
+/* Releases what sync_init() prepared. */
+static void sync_free(pool_mutex *m, pool_cond *a, pool_cond *b)
+{
+    pthread_cond_destroy(a);
+    pthread_cond_destroy(b);
+    pthread_mutex_destroy(m);
+}
+
+/* Locks m. */
+static void mutex_lock(pool_mutex *m)
+{
+    pthread_mutex_lock(m);
+}
+
+/* Unlocks m. */
+static void mutex_unlock(pool_mutex *m)
+{
+    pthread_mutex_unlock(m);
+}
+
+/* Unlocks m, sleeps until c is signalled and locks m again. */
+static void cond_wait(pool_cond *c, pool_mutex *m)
+{
+    pthread_cond_wait(c, m);
+}
+
+/* Wakes every thread waiting on c. */
+static void cond_wake_all(pool_cond *c)
+{
+    pthread_cond_broadcast(c);
+}
+
 path_kind path_type(const char *path)
 {
     struct stat st;
@@ -250,3 +336,108 @@ void stdout_binary(void)
 }
 
 #endif
+
+/* One pool thread: its handle, its index and the pool it serves. */
+typedef struct {
+    thread_handle thread;
+    thread_pool *pool;
+    size_t index;
+} pool_thread;
+
+/* Worker threads plus the current job and the counters that hand it out. */
+struct thread_pool {
+    pool_mutex lock;
+    pool_cond wake;
+    pool_cond idle;
+    pool_thread *threads;
+    size_t count;
+    size_t started;
+    unsigned long generation;
+    size_t busy;
+    int stop;
+    void (*fn)(void *, size_t);
+    void *arg;
+};
+
+/*
+ * Body of every pool thread: sleeps until a new job generation is posted,
+ * runs the job once with its own index, reports that it is done, and repeats
+ * until the pool stops.
+ */
+static void *pool_main(void *param)
+{
+    pool_thread *t = param;
+    thread_pool *p = t->pool;
+    unsigned long seen = 0;
+    mutex_lock(&p->lock);
+    for (;;) {
+        while (!p->stop && p->generation == seen)
+            cond_wait(&p->wake, &p->lock);
+        if (p->stop)
+            break;
+        seen = p->generation;
+        void (*fn)(void *, size_t) = p->fn;
+        void *arg = p->arg;
+        mutex_unlock(&p->lock);
+        fn(arg, t->index);
+        mutex_lock(&p->lock);
+        if (--p->busy == 0)
+            cond_wake_all(&p->idle);
+    }
+    mutex_unlock(&p->lock);
+    return NULL;
+}
+
+thread_pool *pool_create(size_t nthreads)
+{
+    if (nthreads == 0)
+        return NULL;
+    thread_pool *p = calloc(1, sizeof *p);
+    if (p == NULL)
+        return NULL;
+    p->threads = calloc(nthreads, sizeof *p->threads);
+    if (p->threads == NULL) {
+        free(p);
+        return NULL;
+    }
+    sync_init(&p->lock, &p->wake, &p->idle);
+    p->count = nthreads;
+    for (; p->started < nthreads; p->started++) {
+        pool_thread *t = &p->threads[p->started];
+        t->pool = p;
+        t->index = p->started;
+        if (thread_start(&t->thread, pool_main, t) != 0) {
+            pool_free(p);
+            return NULL;
+        }
+    }
+    return p;
+}
+
+void pool_run(thread_pool *pool, void (*fn)(void *arg, size_t worker), void *arg)
+{
+    mutex_lock(&pool->lock);
+    pool->fn = fn;
+    pool->arg = arg;
+    pool->busy = pool->count;
+    pool->generation++;
+    cond_wake_all(&pool->wake);
+    while (pool->busy > 0)
+        cond_wait(&pool->idle, &pool->lock);
+    mutex_unlock(&pool->lock);
+}
+
+void pool_free(thread_pool *pool)
+{
+    if (pool == NULL)
+        return;
+    mutex_lock(&pool->lock);
+    pool->stop = 1;
+    cond_wake_all(&pool->wake);
+    mutex_unlock(&pool->lock);
+    for (size_t i = 0; i < pool->started; i++)
+        thread_join(&pool->threads[i].thread);
+    sync_free(&pool->lock, &pool->wake, &pool->idle);
+    free(pool->threads);
+    free(pool);
+}

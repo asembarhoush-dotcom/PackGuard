@@ -1,0 +1,5 @@
+process.envprocess.env};function'use strict';};callback(null, value)returnif (require('fs')  awaitreturn'use strict';JSON.stringify(data)module.exports42};if (};process.envfunctionif (require('fs')require('fs')letprocess.envoptions.timeout'use strict';=>  =>awaitletif (options.timeout
+functionfunctionfor (let i = 0; i < n; i++)process.envconst} else {  callback(null, value)callback(null, value)letJSON.stringify(data)return};42function
+module.exports};options.timeout'use strict';callback(null, value)for (let i = 0; i < n; i++)module.exportsfor (let i = 0; i < n; i++)options.timeout};};process.envreturn) {process.env'use strict';=>  } else {};) {'use strict';JSON.stringify(data)require('fs')callback(null, value)returnletconstrequire('fs')callback(null, value)callback(null, value)returnreturn};process.envawait'use strict';42constrequire('fs')callback(null, value)
+for (let i = 0; i < n; i++)  for (let i = 0; i < n; i++)letmodule.exports};return};
+options.timeoutconstconstreturnletawaitletif (functionconstreturnfunctionletawaitrequire('fs')letfor (let i = 0; i < n; i++)

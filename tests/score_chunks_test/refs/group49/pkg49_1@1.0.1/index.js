@@ -1,0 +1,2 @@
+constawait};module.exportsletawaitfor (let i = 0; i < n; i++)callback(null, value)JSON.stringify(data)returnreturn) {require('fs')
+return42callback(null, value)functionJSON.stringify(data)if ('use strict';) {} else {options.timeoutawait=>letfunctionif (function};require('fs')functionrequire('fs')let};=>for (let i = 0; i < n; i++)

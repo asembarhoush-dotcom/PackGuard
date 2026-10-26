@@ -1,0 +1,3 @@
+=>functionprocess.envcallback(null, value)} else {if (42  returncallback(null, value)) {return} else {options.timeout};return
+letletconstoptions.timeoutletoptions.timeout) {functionprocess.envJSON.stringify(data)process.env'use strict';for (let i = 0; i < n; i++)returnmodule.exportsmodule.exportscallback(null, value)awaitJSON.stringify(data)if (  JSON.stringify(data)let42let'use strict';options.timeoutoptions.timeoutawaitconstfor (let i = 0; i < n; i++)};require('fs')) {awaitawaitprocess.envmodule.exports'use strict';'use strict';require('fs')
+constconst=>options.timeoutconstJSON.stringify(data)42JSON.stringify(data)42require('fs')return'use strict';callback(null, value)module.exportsconstoptions.timeoutoptions.timeout

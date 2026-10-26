@@ -1,0 +1,2 @@
+returnJSON.stringify(data)letJSON.stringify(data)process.env=>
+functionawaitJSON.stringify(data)} else {options.timeoutoptions.timeoutrequire('fs')'use strict';};) {let) {};42for (let i = 0; i < n; i++)) {letmodule.exportsfor (let i = 0; i < n; i++)for (let i = 0; i < n; i++)const} else {callback(null, value)return};letfunctionfor (let i = 0; i < n; i++)options.timeoutreturn'use strict';42

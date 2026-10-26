@@ -1,0 +1,2 @@
+42};};letconst) {awaitoptions.timeoutmodule.exportsreturn
+} else {=>await};return  } else {'use strict';module.exportsoptions.timeoutreturnawaitfor (let i = 0; i < n; i++)) {for (let i = 0; i < n; i++)'use strict';} else {  options.timeout=>if ('use strict';constfunctioncallback(null, value)JSON.stringify(data)return

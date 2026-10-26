@@ -1,0 +1,2 @@
+) {};  };return  ) {const'use strict';} else {for (let i = 0; i < n; i++)functioncallback(null, value)functionconst  functionif (
+letfunctionlet} else {  let} else {42callback(null, value)require('fs')return'use strict';constrequire('fs')=>) {require('fs')} else {process.envprocess.env};const'use strict';};module.exportsrequire('fs')returnreturnmodule.exportsprocess.envmodule.exportsprocess.envletfor (let i = 0; i < n; i++)

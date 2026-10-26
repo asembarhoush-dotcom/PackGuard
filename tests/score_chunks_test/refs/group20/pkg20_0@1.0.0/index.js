@@ -1,0 +1,3 @@
+require('fs')) {42JSON.stringify(data)letmodule.exportsfor (let i = 0; i < n; i++)options.timeout42module.exportsfunction42};};const'use strict';if (letrequire('fs')for (let i = 0; i < n; i++)  options.timeout
+};process.envletprocess.env
+for (let i = 0; i < n; i++)42for (let i = 0; i < n; i++)awaitoptions.timeoutfor (let i = 0; i < n; i++)for (let i = 0; i < n; i++)};if (42const};42constJSON.stringify(data)) {42  =>

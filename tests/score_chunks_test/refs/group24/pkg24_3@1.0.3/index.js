@@ -1,0 +1,6 @@
+=>options.timeoutmodule.exportsmodule.exportsprocess.envmodule.exportsprocess.envmodule.exportsJSON.stringify(data)constrequire('fs')} else {functionfor (let i = 0; i < n; i++)
+function
+42letrequire('fs')functionJSON.stringify(data)functionreturn} else {if (module.exports  
+} else {callback(null, value)};require('fs')  const) {'use strict';module.exportsfor (let i = 0; i < n; i++)await} else {constreturnreturncallback(null, value)42awaitreturnprocess.env) {options.timeoutfor (let i = 0; i < n; i++)for (let i = 0; i < n; i++)const} else {letif ('use strict';};module.exportsrequire('fs')  if (} else {) {callback(null, value)42if () {process.envconst  if (options.timeout  42  require('fs')42require('fs')for (let i = 0; i < n; i++)  process.env'use strict';options.timeoutrequire('fs')  42JSON.stringify(data)) {JSON.stringify(data)if (callback(null, value)if (const42returnrequire('fs')let) {for (let i = 0; i < n; i++)42callback(null, value)42if (=>process.env} else {=>constconst  awaitfor (let i = 0; i < n; i++)42) {functionmodule.exportsoptions.timeout};for (let i = 0; i < n; i++)if (awaitJSON.stringify(data)options.timeoutreturnletreturn
+let};for (let i = 0; i < n; i++)
+function) {callback(null, value)

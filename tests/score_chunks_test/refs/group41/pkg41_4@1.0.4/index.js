@@ -1,0 +1,3 @@
+=>for (let i = 0; i < n; i++)if (awaitmodule.exports=>options.timeout} else {callback(null, value)) {=>options.timeoutfunctionif (function
+  require('fs')require('fs')for (let i = 0; i < n; i++)module.exports) {42'use strict';awaitoptions.timeoutreturn
+=>constletoptions.timeoutreturn};} else {process.envconst) {await  require('fs')callback(null, value)functionletletrequire('fs')callback(null, value)module.exportsreturn) {for (let i = 0; i < n; i++)functionif (options.timeout'use strict';

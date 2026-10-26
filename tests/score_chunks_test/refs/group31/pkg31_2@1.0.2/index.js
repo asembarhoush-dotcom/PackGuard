@@ -1,0 +1,5 @@
+const} else {function  let=>require('fs')process.envreturnrequire('fs')'use strict';let'use strict';callback(null, value)returnif (require('fs')require('fs')returnreturnrequire('fs')if (callback(null, value)
+JSON.stringify(data)42};process.env
+options.timeoutrequire('fs')constletfor (let i = 0; i < n; i++)functioncallback(null, value)=>for (let i = 0; i < n; i++)letprocess.envrequire('fs')process.env) {=>for (let i = 0; i < n; i++)=>awaitmodule.exports'use strict';if (constprocess.envprocess.env};options.timeoutoptions.timeoutcallback(null, value)} else {constreturnreturnmodule.exportsawaitrequire('fs')42'use strict';process.env
+require('fs')=>functionconstawait'use strict';JSON.stringify(data)
+42process.envprocess.env} else {};returnawaitprocess.envJSON.stringify(data)for (let i = 0; i < n; i++)

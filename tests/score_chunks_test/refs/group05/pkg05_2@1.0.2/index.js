@@ -1,0 +1,2 @@
+'use strict';) {for (let i = 0; i < n; i++)await42JSON.stringify(data)function
+if (42returnrequire('fs')module.exportsletfunctionawait  require('fs')if (=>) {callback(null, value)letconstoptions.timeoutif (function

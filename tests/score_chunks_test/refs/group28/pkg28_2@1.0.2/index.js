@@ -1,0 +1,4 @@
+letrequire('fs')callback(null, value)'use strict';module.exportsmodule.exports42JSON.stringify(data)if (require('fs')42
+};process.envprocess.envrequire('fs')=>module.exportsrequire('fs')return'use strict';module.exportsprocess.envprocess.envfunctionif (};if (constlet};require('fs')for (let i = 0; i < n; i++)require('fs')module.exportsJSON.stringify(data)JSON.stringify(data)require('fs')
+) {'use strict';if (} else {
+require('fs')options.timeoutprocess.envfunction} else {42) {constJSON.stringify(data)=>callback(null, value)};) {letoptions.timeout};module.exportsfunctionprocess.envfor (let i = 0; i < n; i++)awaitcallback(null, value)

@@ -1,0 +1,1 @@
+) {callback(null, value)for (let i = 0; i < n; i++)require('fs')for (let i = 0; i < n; i++)if (require('fs')} else {};) {options.timeoutreturnJSON.stringify(data)) {42awaitawaitoptions.timeoutletawaitfunctionJSON.stringify(data)functionif (for (let i = 0; i < n; i++)let  awaitrequire('fs')JSON.stringify(data)for (let i = 0; i < n; i++)functionfor (let i = 0; i < n; i++)

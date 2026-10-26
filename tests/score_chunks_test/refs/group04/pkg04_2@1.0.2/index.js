@@ -1,0 +1,1 @@
+if (} else {let=>  require('fs')callback(null, value)constconstfunction=>callback(null, value)) {} else {returnif (JSON.stringify(data)callback(null, value)await  ) {JSON.stringify(data)module.exportsreturnletcallback(null, value)) {process.envfunctionreturn42) {) {process.envmodule.exports  } else {} else {42await

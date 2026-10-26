@@ -1,0 +1,3 @@
+) {returnJSON.stringify(data)JSON.stringify(data)  await};returnrequire('fs')module.exports};process.envreturn  awaitmodule.exportsawait
+42    if (functionreturncallback(null, value)await=>
+};  functionif (constmodule.exportsmodule.exports  if (42} else {) {process.env  =>  };let=>return'use strict';module.exports=>require('fs')constletoptions.timeout=>awaitcallback(null, value)require('fs')require('fs')=>JSON.stringify(data)JSON.stringify(data)module.exports) {constfor (let i = 0; i < n; i++)letmodule.exports};options.timeout};if ('use strict';function) {process.env

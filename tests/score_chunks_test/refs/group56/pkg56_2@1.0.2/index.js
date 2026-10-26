@@ -1,0 +1,2 @@
+callback(null, value)functionrequire('fs')  42JSON.stringify(data)) {for (let i = 0; i < n; i++)functionfor (let i = 0; i < n; i++)awaitprocess.env} else {callback(null, value)};if (letawait42'use strict';
+if (constfor (let i = 0; i < n; i++)42) {options.timeout} else {process.envfunctionoptions.timeoutcallback(null, value)process.envreturnoptions.timeoutcallback(null, value)require('fs')=>require('fs')functionrequire('fs')=>if (module.exportslet'use strict';returnprocess.envcallback(null, value)

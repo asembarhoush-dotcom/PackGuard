@@ -1,0 +1,3 @@
+42letfunctionfunctionprocess.env) {if (if (require('fs')letfor (let i = 0; i < n; i++)callback(null, value)callback(null, value)constoptions.timeout};returnfunctionconstprocess.envif (JSON.stringify(data)'use strict';function  require('fs')42) {callback(null, value)process.env'use strict';42module.exportscallback(null, value)};awaitif (
+
+let} else {'use strict';options.timeout) {JSON.stringify(data)function42require('fs')  module.exports
