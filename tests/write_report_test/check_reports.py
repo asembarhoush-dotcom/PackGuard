@@ -13,7 +13,9 @@ def load(name):
 a = load("all_chunks.json")
 src = {n: open(f"{d}/{n}", "rb").read() for n in ["escapes.txt", "utf8_valid.txt", "utf8_cut_end.txt", "utf8_invalid.txt"]}
 check(a["package"] == '@scope/pkg"q' and a["version"] == "1.0.0", "package/version escaped")
-check(a["score"] == 0.0 and a["threshold"] == 0.5 and a["flagged"] is True, "score, threshold, flagged")
+check(a["score"] == 0.0 and a["ignored_small_chunks"] == 2 and a["low_confidence"] is True,
+      "score, ignored count, low confidence")
+check(a["threshold"] == 0.5 and a["flagged"] is True, "threshold, flagged")
 check(a["seconds"] == 1.5, "seconds written")
 check(len(a["chunks"]) == 4, "four chunks")
 c = {x["file"]: x for x in a["chunks"]}
@@ -28,6 +30,10 @@ check(a["matched_packages"] == [{"package": "boby_parser@2.2.0", "group": "be816
                                 {"package": 'x"y', "group": "g", "ncd": None, "chunks": 1}], "matched_packages list")
 check([x["start"] for x in a["chunks"]] == [0, 4096, 8192, 12288], "chunk starts")
 check([x["ncd"] for x in a["chunks"]] == [0.0, 0.25, 0.5, 0.75], "chunk ncd values")
+check([x["kind"] for x in a["chunks"]] == ["install_script", "js", "js", "js"], "chunk kinds")
+check([x.get("ignored", False) for x in a["chunks"]] == [False, False, False, True], "chunk ignored flags")
+check([x["threshold"] for x in a["chunks"]] == [0.45, 0.5, 0.5, 0.5], "per-chunk thresholds")
+check([x["flagged"] for x in a["chunks"]] == [True, False, False, False], "per-chunk flags")
 
 e = load("no_chunks.json")
 check(e["score"] is None and e["flagged"] is False and e["chunks"] == [], "no chunks: null score, not flagged")

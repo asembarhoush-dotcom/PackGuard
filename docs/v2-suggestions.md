@@ -2,6 +2,21 @@
 
 Open ideas for improving stage 1 (the NCD compression scanner), ranked by their expected effect on accuracy and time. Written 2026-10-25 from the v1 detailed test ([`experiments/v1/`](../experiments/v1/README.md)). Updated 2026-10-26 with the v2 ratio experiment ([`experiments/v2/`](../experiments/v2/README.md)) and with the finished items removed: the v2 malware set with a tuned ratio, install-script scanning, and the thread pool with the 64 KiB dictionary and the inverted LZJD index.
 
+## Done in v3
+
+Suggestions 1–3 are implemented on branch `feature/v3-stage1`; measurements and
+caveats are in [`experiments/v3/`](../experiments/v3/README.md).
+
+| Suggestion | Result |
+|---|---|
+| 1. Tiny JavaScript chunks ignored | 10/400 → 5/400 benign at 0.19; recall 10.3% → 9.0% (`mal_shape`) and 12.0% → 11.5% (`mal_stream`) |
+| 2. Boilerplate reference chunks dropped | 5/400 → 1/400 at 0.19 and 8/400 → 4/400 at 0.30; recall 9.0% → 8.7% (`mal_shape`) and 11.5% unchanged (`mal_stream`); 322 reference chunks dropped |
+| 3. Separate install-script threshold | Script-only recall 2/36 → 7/36; `ben_scripts` false alarms stay 0/64 |
+
+The remaining false alarm at 0.19 is `supertest` matching a renamed copy of
+itself, which is suggestion 4's copied-library problem. Ranks 1–3 below are
+kept for history; the next work starts at rank 4.
+
 ## What v1 and v2 showed
 
 | Result | Number |
@@ -17,7 +32,6 @@ Open ideas for improving stage 1 (the NCD compression scanner), ranked by their 
 NCD finds code that the references share. Keeping the references up to date with every new attack is what catches new malware; the ideas below improve accuracy and speed with that given.
 
 ## Ranking
-
 | Rank | Suggestion | Effect | What it changes |
 |---|---|---|---|
 | 1 | Ignore JavaScript chunks under 256 bytes when scoring a package | High on false alarms, cheapest of all | Measured on v2 with the chosen references: benign false alarms at 0.19 fall from 10 to 5 of 400, and at 0.30 from 24 to 8. Recall at 0.19 drops slightly (`mal_shape` 10.3% → 9.0%, `mal_stream` 12.0% → 11.5%), because a few malicious packages are tiny too. Install-script chunks are kept whatever their size. A package whose files are all under 256 bytes still needs a score, so either score it on its largest chunk or leave it to stage 2. It can be a scanner option first, so both ways stay measurable. |

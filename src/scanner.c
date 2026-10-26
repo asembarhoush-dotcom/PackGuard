@@ -1,5 +1,6 @@
 #include "scanner.h"
 
+#include "boilerplate.h"
 #include "compresser.h"
 #include "manifest.h"
 #include "platform.h"
@@ -110,7 +111,7 @@ static int has_name(const char *path, const char *name)
  * Chunk lists with no chunks are freed and not added.
  * Returns 0 on success, -1 on failure.
  */
-static int add_chunks(file_list *list, const char *path, chunk_list chunks)
+static int add_chunks(file_list *list, const char *path, chunk_list chunks, file_kind kind)
 {
     if (chunks.count == 0) {
         free_chunks(&chunks);
@@ -133,7 +134,7 @@ static int add_chunks(file_list *list, const char *path, chunk_list chunks)
         return -1;
     }
     memcpy(copy, path, len);
-    list->items[list->count++] = (loaded_file){copy, chunks};
+    list->items[list->count++] = (loaded_file){copy, chunks, kind};
     return 0;
 }
 
@@ -142,14 +143,14 @@ static int add_chunks(file_list *list, const char *path, chunk_list chunks)
  * Files with no chunks (empty files) are not added.
  * Returns 0 on success, -1 on failure.
  */
-static int add_file(file_list *list, const char *path)
+static int add_file(file_list *list, const char *path, file_kind kind)
 {
     chunk_list chunks;
     if (split_file(path, &chunks) != 0) {
         fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
         return -1;
     }
-    return add_chunks(list, path, chunks);
+    return add_chunks(list, path, chunks, kind);
 }
 
 /*
@@ -175,7 +176,7 @@ static int add_manifest(file_list *list, const char *path)
     chunk_list chunks;
     if (split_buffer(text, text_len, &chunks) != 0)
         return -1;
-    return add_chunks(list, path, chunks);
+    return add_chunks(list, path, chunks, FILE_INSTALL_SCRIPT);
 }
 
 /*
@@ -185,7 +186,9 @@ static int add_manifest(file_list *list, const char *path)
  * and only when it is the path itself or directly inside it, since npm runs
  * the scripts of the package root only. A file named install_scripts.txt,
  * which is how reference sets store install scripts as they keep no
- * package.json, is added whole.
+ * package.json, is added whole. Each added file is tagged with its kind:
+ * FILE_INSTALL_SCRIPT for the two script names, FILE_JS for the three
+ * JavaScript extensions, FILE_OTHER for any other file passed directly.
  * Returns 0 on success, -1 on failure.
  */
 static int collect(file_list *list, const char *path, int depth)
@@ -198,7 +201,10 @@ static int collect(file_list *list, const char *path, int depth)
     if (kind == PATH_FILE) {
         if (has_name(path, "package.json"))
             return depth <= 1 ? add_manifest(list, path) : 0;
-        return depth == 0 || is_js(path) || has_name(path, SCRIPTS_FILE) ? add_file(list, path) : 0;
+        if (depth != 0 && !is_js(path) && !has_name(path, SCRIPTS_FILE))
+            return 0;
+        return add_file(list, path, has_name(path, SCRIPTS_FILE) ? FILE_INSTALL_SCRIPT
+                               : is_js(path) ? FILE_JS : FILE_OTHER);
     }
     if (kind != PATH_DIR)
         return 0;
@@ -684,7 +690,8 @@ done:
     return rc;
 }
 
-int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates)
+int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
+                    int drop_boilerplate)
 {
     size_t *file_group = NULL;
     *set = (reference_set){0};
@@ -738,6 +745,18 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
     file_group = NULL;
     if (drop_repeats(set->refs, &set->count, &set->extra_groups, &set->extra_count) != 0)
         goto fail;
+    if (drop_boilerplate) {
+        size_t kept = 0;
+        for (size_t i = 0; i < set->count; i++)
+            if (!is_boilerplate(set->refs[i].chunk->data, set->refs[i].chunk->length))
+                set->refs[kept++] = set->refs[i];
+        set->boilerplate_chunks = set->count - kept;
+        set->count = kept;
+        if (set->count == 0) {
+            fprintf(stderr, "packguard: %s: no reference chunks after dropping boilerplate\n", dir);
+            goto fail;
+        }
+    }
 
     pass p = {.refs = set->refs, .count = set->count};
     if (run_pass(set, &p, cache_worker) != 0)

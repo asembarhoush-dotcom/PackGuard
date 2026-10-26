@@ -13,9 +13,9 @@ DEFAULT_SCRIPT_THRESHOLD = 0.45
 
 def chunk_kind(chunk):
     """Returns 'install_script' for package.json and install_scripts.txt
-    chunks, and 'js' for everything else; a report's kind field wins."""
+    chunks, 'js' or 'other' when the report says so, and 'js' otherwise."""
     kind = chunk.get("kind")
-    if kind in ("js", "install_script"):
+    if kind in ("js", "install_script", "other"):
         return kind
     return "install_script" if os.path.basename(chunk.get("file", "")) in SCRIPT_FILES else "js"
 
@@ -39,6 +39,13 @@ def js_scores(report, min_js=0):
             and chunk_bytes(c) >= min_js and ncd(c) is not None]
 
 
+def other_scores(report):
+    """Lists the NCDs of scored chunks that are neither JavaScript nor
+    install scripts."""
+    return [ncd(c) for c in report["chunks"]
+            if chunk_kind(c) == "other" and ncd(c) is not None]
+
+
 def script_scores(report):
     """Lists the NCDs of scored install-script chunks."""
     return [ncd(c) for c in report["chunks"]
@@ -48,7 +55,7 @@ def script_scores(report):
 def score(report, min_js=0):
     """Package score from one report: the lowest eligible chunk NCD,
     including install scripts; 1.0 when nothing was scored."""
-    values = js_scores(report, min_js) + script_scores(report)
+    values = js_scores(report, min_js) + other_scores(report) + script_scores(report)
     return min(values) if values else 1.0
 
 
@@ -58,10 +65,10 @@ def lowest(values):
 
 
 def flagged(report, js_threshold, script_threshold, min_js=0):
-    """Returns 1 when the package's JavaScript score is at or below
-    js_threshold or its install-script score is at or below
+    """Returns 1 when the package's JavaScript (or other file) score is at
+    or below js_threshold or its install-script score is at or below
     script_threshold, otherwise 0."""
-    js = lowest(js_scores(report, min_js))
+    js = lowest(js_scores(report, min_js) + other_scores(report))
     script = lowest(script_scores(report))
     return int((js is not None and js <= js_threshold)
                or (script is not None and script <= script_threshold))
@@ -121,7 +128,8 @@ def analyze(work, out, tags):
             script = lowest(script_scores(rep))
             row = {"tag": tag, "category": cat, "package": package,
                    "scripts_only": m.get("scripts_only", ""), "shape_seen": m.get("shape_seen", ""),
-                   "chunks": len(rep["chunks"]), "script_score": script}
+                   "chunks": len(rep["chunks"]), "script_score": script,
+                   "ignored_small_chunks": rep.get("ignored_small_chunks", 0)}
             for v in MIN_JS:
                 s = score(rep, v)
                 js = lowest(js_scores(rep, v))

@@ -21,7 +21,10 @@ typedef struct {
     size_t nthreads;
     size_t near_k;
     size_t candidates;
+    size_t min_js_bytes;
+    int drop_boilerplate;
     double threshold;
+    double script_threshold;
     const char *out_file;
     const char *out_dir;
     const char *ref_dir;
@@ -33,15 +36,23 @@ typedef struct {
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: packguard [-j threads] [-p candidates] [-t threshold] [-k groups]\n"
-            "                 [-o report.json | -d report_dir] <reference_dir> <package_path>...\n"
+            "usage: packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-t threshold]\n"
+            "                 [-s script_threshold] [-k groups]\n"
+            "                 [-o report.json | -d report_dir]\n"
+            "                 <reference_dir> <package_path>...\n"
             "  Scores every .js/.cjs/.mjs file and the root package.json install scripts\n"
             "  of each package_path against every file of reference_dir by NCD. The\n"
             "  references are loaded once for all packages.\n"
             "  -j  worker threads (default: all logical processors)\n"
             "  -p  LZJD prefilter: run NCD only on this many most similar reference\n"
             "      chunks per chunk (default %d; 0 scores every reference, exact)\n"
-            "  -t  also report whether the score is at or below this threshold\n"
+            "  -m  leave JavaScript chunks shorter than this many bytes out of the\n"
+            "      package score (default 256; 0 scores every chunk)\n"
+            "  -b  drop reference chunks that hold only a compiled module stub\n"
+            "      (default 1; 0 keeps every reference chunk)\n"
+            "  -t  also report each chunk's threshold and flagged state, and whether\n"
+            "      any non-ignored chunk is at or below its threshold\n"
+            "  -s  with -t, the threshold for install-script chunks (default 0.45)\n"
             "  -k  also list, per chunk, the closest reference groups (first folder\n"
             "      below reference_dir) and their lowest NCD, up to this many\n"
             "  -o  write the report of a single package to this file (default: stdout)\n"
@@ -56,7 +67,9 @@ static void usage(void)
  */
 static int parse_args(int argc, char **argv, options *opt)
 {
-    *opt = (options){.nthreads = cpu_count(), .candidates = DEFAULT_CANDIDATES, .threshold = -1.0};
+    *opt = (options){.nthreads = cpu_count(), .candidates = DEFAULT_CANDIDATES,
+                     .min_js_bytes = 256, .drop_boilerplate = 1, .threshold = -1.0,
+                     .script_threshold = 0.45};
     int i = 1;
     for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
         const char *a = argv[i];
@@ -66,7 +79,7 @@ static int parse_args(int argc, char **argv, options *opt)
         }
         if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0)
             return 1;
-        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkp", a[1]) == NULL) {
+        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkpmbs", a[1]) == NULL) {
             fprintf(stderr, "packguard: bad option %s\n", a);
             return -1;
         }
@@ -93,10 +106,30 @@ static int parse_args(int argc, char **argv, options *opt)
                 return -1;
             }
             opt->candidates = (size_t)n;
+        } else if (a[1] == 'm') {
+            long n = strtol(value, &end, 10);
+            if (*end != '\0' || n < 0 || n > (long)SPLIT_THRESHOLD) {
+                fprintf(stderr, "packguard: -m needs 0 to %u\n", SPLIT_THRESHOLD);
+                return -1;
+            }
+            opt->min_js_bytes = (size_t)n;
+        } else if (a[1] == 'b') {
+            long n = strtol(value, &end, 10);
+            if (*end != '\0' || (n != 0 && n != 1)) {
+                fprintf(stderr, "packguard: -b needs 0 or 1\n");
+                return -1;
+            }
+            opt->drop_boilerplate = (int)n;
         } else if (a[1] == 't') {
             opt->threshold = strtod(value, &end);
             if (*end != '\0' || opt->threshold < 0.0) {
                 fprintf(stderr, "packguard: -t needs a number of 0 or more\n");
+                return -1;
+            }
+        } else if (a[1] == 's') {
+            opt->script_threshold = strtod(value, &end);
+            if (*end != '\0' || opt->script_threshold < 0.0) {
+                fprintf(stderr, "packguard: -s needs a number of 0 or more\n");
                 return -1;
             }
         } else if (a[1] == 'o') {
@@ -256,11 +289,24 @@ typedef struct {
     int loaded;
 } package_job;
 
+/* Returns the report name of one file kind. */
+static const char *kind_report_name(file_kind kind)
+{
+    if (kind == FILE_JS)
+        return "js";
+    if (kind == FILE_INSTALL_SCRIPT)
+        return "install_script";
+    return "other";
+}
+
 /*
  * Builds the report of a scored package and writes it to
  * opt->out_dir/<package folder>.json, to opt->out_file, or to stdout.
  * scores, and nears and near_counts when k > 0, hold the package's own
- * chunks in walk order. Progress goes to stderr.
+ * chunks in walk order. JavaScript chunks shorter than opt->min_js_bytes are
+ * marked ignored and left out of the package score; when a package has no
+ * other chunk, its largest JavaScript chunk sets the score and the report is
+ * marked low_confidence. Progress goes to stderr.
  * Returns 0 on success, -1 on failure.
  */
 static int write_package(const reference_set *refs, const options *opt, const package_job *job,
@@ -273,7 +319,8 @@ static int write_package(const reference_set *refs, const options *opt, const pa
     char *out_path = NULL;
     report_chunk *rows = malloc((count ? count : 1) * sizeof *rows);
     report_match *matched = malloc((count ? count : 1) * sizeof *matched);
-    if (rows == NULL || matched == NULL)
+    chunk_score *used = malloc((count ? count : 1) * sizeof *used);
+    if (rows == NULL || matched == NULL || used == NULL)
         goto done;
     if (opt->out_dir != NULL) {
         size_t blen;
@@ -285,43 +332,83 @@ static int write_package(const reference_set *refs, const options *opt, const pa
         snprintf(out_path, len, "%s/%.*s.json", opt->out_dir, (int)blen, base);
     }
 
-    double best = 0.0;
+    double best = DBL_MAX;
+    size_t ignored = 0;
+    size_t fallback = SIZE_MAX;
+    size_t fallback_len = 0;
     size_t s = 0;
     for (size_t i = 0; i < job->targets.count; i++) {
-        const char *file = relative_to(job->targets.items[i].path, pkg);
-        for (size_t j = 0; j < job->targets.items[i].chunks.count; j++, s++) {
-            const file_chunk *c = &job->targets.items[i].chunks.chunks[j];
+        const loaded_file *target = &job->targets.items[i];
+        const char *file = relative_to(target->path, pkg);
+        const char *kind = kind_report_name(target->kind);
+        for (size_t j = 0; j < target->chunks.count; j++, s++) {
+            const file_chunk *c = &target->chunks.chunks[j];
             const ref_chunk *m = &refs->refs[scores[s].ref];
+            int skip = target->kind == FILE_JS && c->length < opt->min_js_bytes;
+            int has_threshold = opt->threshold >= 0.0;
+            double limit = target->kind == FILE_INSTALL_SCRIPT ? opt->script_threshold : opt->threshold;
             rows[s] = (report_chunk){
                 .file = file,
+                .kind = kind,
                 .start = c->offset,
                 .ncd = scores[s].ncd,
+                .threshold = limit,
+                .has_threshold = has_threshold,
+                .flagged = has_threshold && scores[s].ncd <= limit,
                 .match_file = relative_to(refs->files.items[m->file].path, opt->ref_dir),
                 .match_package = refs->package_names[refs->file_package[m->file]],
                 .match_start = m->chunk->offset,
                 .text = c->data,
                 .text_len = c->length,
+                .ignored = skip,
             };
             if (k > 0) {
                 rows[s].near = nears + s * k;
                 rows[s].near_count = near_counts[s];
             }
-            if (s == 0 || scores[s].ncd < best)
+            if (skip) {
+                ignored++;
+                if (c->length > fallback_len) {
+                    fallback_len = c->length;
+                    fallback = s;
+                }
+            } else if (scores[s].ncd < best) {
                 best = scores[s].ncd;
+            }
             fprintf(stderr, "packguard:   %s @%zu: ncd %.4f\n", file, c->offset, scores[s].ncd);
         }
     }
 
+    int low_confidence = 0;
+    if (best == DBL_MAX && fallback != SIZE_MAX) {
+        best = scores[fallback].ncd;
+        rows[fallback].ignored = 0;
+        ignored--;
+        low_confidence = 1;
+    }
+    int has_score = count > 0 && best != DBL_MAX;
+    int flagged = 0;
+    for (size_t i = 0; i < count; i++)
+        if (!rows[i].ignored && rows[i].flagged)
+            flagged = 1;
+
     char name[512], version[512];
     package_id(pkg, name, version, sizeof name);
-    size_t matched_count = matched_packages(refs, scores, count, matched);
+    size_t used_count = 0;
+    for (size_t i = 0; i < count; i++)
+        if (!rows[i].ignored)
+            used[used_count++] = scores[i];
+    size_t matched_count = matched_packages(refs, used, used_count, matched);
     package_report report = {
         .package = name,
         .version = version,
         .score = best,
-        .has_score = count > 0,
+        .has_score = has_score,
+        .ignored_small_chunks = ignored,
+        .low_confidence = low_confidence,
         .threshold = opt->threshold,
         .has_threshold = opt->threshold >= 0.0,
+        .flagged = flagged,
         .seconds = job->seconds,
         .has_seconds = 1,
         .matched = matched,
@@ -339,15 +426,17 @@ static int write_package(const reference_set *refs, const options *opt, const pa
         fprintf(stderr, "packguard: writing the report failed\n");
         goto done;
     }
-    if (count > 0)
-        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f, %.1f s, closest %s (%s)\n",
-                pkg, job->targets.count, count, best, job->seconds, matched[0].package, matched[0].group);
+    if (has_score)
+        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f%s, %.1f s, closest %s (%s)\n",
+                pkg, job->targets.count, count, best, low_confidence ? " (low confidence)" : "",
+                job->seconds, matched[0].package, matched[0].group);
     else
         fprintf(stderr, "packguard: %s: no JavaScript or install scripts, score null, %.1f s\n", pkg,
                 job->seconds);
     status = 0;
 
 done:
+    free(used);
     free(out_path);
     free(matched);
     free(rows);
@@ -473,14 +562,14 @@ int main(int argc, char **argv)
 
     double t0 = now_seconds();
     reference_set refs;
-    if (load_references(&refs, opt.ref_dir, opt.nthreads, opt.candidates) != 0) {
+    if (load_references(&refs, opt.ref_dir, opt.nthreads, opt.candidates, opt.drop_boilerplate) != 0) {
         fprintf(stderr, "packguard: loading references failed\n");
         return 1;
     }
-    fprintf(stderr, "packguard: %zu reference files, %zu chunks, %zu distinct, %zu packages, "
-            "loaded in %.1f s on %zu threads, ",
-            refs.files.count, refs.total_chunks, refs.count, refs.package_count,
-            now_seconds() - t0, refs.nthreads);
+    fprintf(stderr, "packguard: %zu reference files, %zu chunks, %zu distinct (%zu boilerplate dropped), "
+            "%zu packages, loaded in %.1f s on %zu threads, ",
+            refs.files.count, refs.total_chunks, refs.count, refs.boilerplate_chunks,
+            refs.package_count, now_seconds() - t0, refs.nthreads);
     if (refs.candidates > 0)
         fprintf(stderr, "LZJD prefilter: NCD on the %zu most similar chunks\n", refs.candidates);
     else

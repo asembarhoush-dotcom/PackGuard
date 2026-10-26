@@ -21,8 +21,12 @@ typedef struct {
 /* One scored chunk of the package and the reference chunk closest to it. */
 typedef struct {
     const char *file;
+    const char *kind;
     size_t start;
     double ncd;
+    double threshold;
+    int has_threshold;
+    int flagged;
     const char *match_file;
     const char *match_package;
     size_t match_start;
@@ -30,6 +34,7 @@ typedef struct {
     size_t text_len;
     const report_near *near;
     size_t near_count;
+    int ignored;
 } report_chunk;
 
 /* Stage 1 result for one package, as written by write_report(). */
@@ -38,8 +43,11 @@ typedef struct {
     const char *version;
     double score;
     int has_score;
+    size_t ignored_small_chunks;
+    int low_confidence;
     double threshold;
     int has_threshold;
+    int flagged;
     double seconds;
     int has_seconds;
     const report_match *matched;
@@ -50,14 +58,16 @@ typedef struct {
 
 /*
  * Writes r to out as the JSON object stage 2 reads:
- * package, version, score (null when has_score is 0), threshold and flagged
- * (only when has_threshold is set; flagged means score <= threshold),
- * seconds (scan time, only when has_seconds is set), matched_packages
- * (only when matched is not NULL: a list of {package, group, ncd, chunks}
- * in the given order), then one entry per chunk with file, start, ncd,
- * match {file, package (when match_package is not NULL), start}, near
- * (only when the chunk has near_count > 0: a list of {group, ncd}, closest
- * first) and text.
+ * package, version, score (null when has_score is 0), ignored_small_chunks
+ * (only when positive), low_confidence (only when set), threshold and flagged
+ * (only when has_threshold is set; flagged is r->flagged, the OR of the
+ * per-chunk rules), seconds (scan time, only when has_seconds is set),
+ * matched_packages (only when matched is not NULL: a list of {package, group,
+ * ncd, chunks} in the given order), then one entry per chunk with file, kind
+ * (when not NULL), start, ncd, threshold and flagged (each only when
+ * has_threshold is set), ignored (only when set), match {file, package (when
+ * match_package is not NULL), start}, near (only when the chunk has
+ * near_count > 0: a list of {group, ncd}, closest first) and text.
  * r and everything it points to are only borrowed for the call.
  * Strings are escaped per RFC 8259. Chunk text is raw file bytes cut at
  * fixed offsets, so any byte that is not part of a valid UTF-8 sequence is

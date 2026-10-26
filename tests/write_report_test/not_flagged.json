@@ -5,6 +5,6 @@
   "threshold": 0.5000,
   "flagged": false,
   "chunks": [
-    { "file": "utf8_valid.txt", "start": 4096, "ncd": 0.2500, "match": { "file": "ref\"dir\\x.js", "package": "pkg@1.0.0", "start": 8192 }, "text": "café € 😀 مرحبا\n" }
+    { "file": "utf8_valid.txt", "kind": "js", "start": 4096, "ncd": 0.2500, "threshold": 0.5000, "flagged": false, "match": { "file": "ref\"dir\\x.js", "package": "pkg@1.0.0", "start": 8192 }, "text": "café € 😀 مرحبا\n" }
   ]
 }
