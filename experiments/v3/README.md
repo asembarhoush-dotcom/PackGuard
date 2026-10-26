@@ -104,7 +104,7 @@ reported; the saving is in false alarms, not time.
 ### Suggestion 1: tiny JavaScript chunks
 
 The scanner reproduces the recorded projection exactly: 5 of 400 benign
-packages at 0.19 and 8 of 400 at 0.30, with recall 9.0% / 11.5%. The 878
+packages at 0.19 and 8 of 400 at 0.30, with recall 9.0% / 11.5%. The 345
 chunks under 256 bytes in the benign set no longer set a package score. The
 install scripts are untouched. The all-tiny fallback was exercised by
 `tests/write_package_test` and produced a score plus `low_confidence` in every
