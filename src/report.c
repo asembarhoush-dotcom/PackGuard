@@ -111,11 +111,14 @@ int write_report(FILE *out, const package_report *r)
         json_number(out, r->score);
     else
         fputs("null", out);
+    if (r->ignored_small_chunks > 0)
+        fprintf(out, ",\n  \"ignored_small_chunks\": %zu", r->ignored_small_chunks);
+    if (r->low_confidence)
+        fputs(",\n  \"low_confidence\": true", out);
     if (r->has_threshold) {
         fputs(",\n  \"threshold\": ", out);
         json_number(out, r->threshold);
-        fprintf(out, ",\n  \"flagged\": %s",
-                r->has_score && r->score <= r->threshold ? "true" : "false");
+        fprintf(out, ",\n  \"flagged\": %s", r->flagged ? "true" : "false");
     }
     if (r->has_seconds) {
         fputs(",\n  \"seconds\": ", out);
@@ -140,8 +143,19 @@ int write_report(FILE *out, const package_report *r)
         const report_chunk *c = &r->chunks[i];
         fprintf(out, "%s\n    { \"file\": ", i ? "," : "");
         json_string(out, c->file);
+        if (c->kind != NULL) {
+            fputs(", \"kind\": ", out);
+            json_string(out, c->kind);
+        }
         fprintf(out, ", \"start\": %zu, \"ncd\": ", c->start);
         json_number(out, c->ncd);
+        if (c->has_threshold) {
+            fputs(", \"threshold\": ", out);
+            json_number(out, c->threshold);
+            fprintf(out, ", \"flagged\": %s", c->flagged ? "true" : "false");
+        }
+        if (c->ignored)
+            fputs(", \"ignored\": true", out);
         fputs(", \"match\": { \"file\": ", out);
         json_string(out, c->match_file);
         if (c->match_package != NULL) {

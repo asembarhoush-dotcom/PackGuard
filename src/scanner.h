@@ -7,10 +7,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* One file read into memory and split into chunks. */
+typedef enum {
+    FILE_JS,
+    FILE_INSTALL_SCRIPT,
+    FILE_OTHER
+} file_kind;
+
+/* One file read into memory, split into chunks and tagged with what it holds. */
 typedef struct {
     char *path;
     chunk_list chunks;
+    file_kind kind;
 } loaded_file;
 
 /* A growable list of loaded files in walk order. */
@@ -45,6 +52,7 @@ typedef struct {
     ref_chunk *refs;
     size_t count;
     size_t total_chunks;
+    size_t boilerplate_chunks;
     char **group_names;
     size_t group_count;
     size_t *extra_groups;
@@ -69,7 +77,10 @@ typedef struct {
  * text only (see install_scripts()); deeper ones are skipped, since npm
  * runs no scripts from them. Empty files, and package.json files with no
  * install scripts, are left out. Paths below the given one are joined with
- * '/' on every platform.
+ * '/' on every platform. Every added file is tagged FILE_JS, FILE_INSTALL_SCRIPT
+ * or FILE_OTHER: the first for .js, .cjs and .mjs, the second for package.json
+ * and install_scripts.txt, the third for a file named directly on the command
+ * line with another name.
  *
  * Returns 0 on success, -1 on failure (with a message on stderr).
  */
@@ -83,9 +94,11 @@ void free_files(file_list *list);
  * .mjs and install_scripts.txt) as a reference, splits it
  * into chunks and keeps one copy of each distinct chunk (byte-identical
  * chunks give identical NCDs, so dropping repeats never changes a score;
- * the first one in walk order is kept). Then caches C(x) for every kept
- * chunk using a pool of nthreads threads that is started once here and
- * reused by every later call, each thread with its own encoder.
+ * the first one in walk order is kept). When drop_boilerplate is nonzero,
+ * chunks that hold only a compiled module stub (see is_boilerplate()) are
+ * dropped next, and boilerplate_chunks counts them. Then caches C(x) for
+ * every kept chunk using a pool of nthreads threads that is started once
+ * here and reused by every later call, each thread with its own encoder.
  * Each reference file also gets a group: the first path component below
  * dir (in v1, the code-shape folder), or its own name when it sits
  * directly in dir. group_names holds them in walk order. A kept chunk
@@ -106,7 +119,8 @@ void free_files(file_list *list);
  *
  * Returns 0 on success, -1 on failure; set is left empty on failure.
  */
-int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates);
+int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
+                    int drop_boilerplate);
 
 /*
  * Scores chunk against every reference on all threads:

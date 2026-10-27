@@ -1,0 +1,14 @@
+{
+  "package": "boundary",
+  "version": "1.0.0",
+  "score": 1.0000,
+  "threshold": 0.1900,
+  "flagged": false,
+  "seconds": 0.0106,
+  "matched_packages": [
+    { "package": "evil@1.0.0", "group": "groupA", "ncd": 1.0000, "chunks": 1 }
+  ],
+  "chunks": [
+    { "file": "exact.js", "kind": "js", "start": 0, "ncd": 1.0000, "threshold": 0.1900, "flagged": false, "match": { "file": "groupA/evil@1.0.0/index.js", "package": "evil@1.0.0", "start": 0 }, "text": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+  ]
+}

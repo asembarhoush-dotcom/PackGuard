@@ -29,15 +29,19 @@ int main(int argc, char **argv)
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
         size_t len;
         unsigned char *buf = slurp(path, &len);
-        rows[i] = (report_chunk){.file = names[i], .start = (size_t)i * 4096, .ncd = 0.25 * i,
+        rows[i] = (report_chunk){.file = names[i], .kind = i == 0 ? "install_script" : "js",
+                                 .start = (size_t)i * 4096, .ncd = 0.25 * i,
+                                 .threshold = i == 0 ? 0.45 : 0.5, .has_threshold = 1, .flagged = i == 0,
                                  .match_file = "ref\"dir\\x.js", .match_package = i < 3 ? "pkg@1.0.0" : NULL,
-                                 .match_start = 8192, .text = buf, .text_len = len};
+                                 .match_start = 8192, .text = buf, .text_len = len, .ignored = i == 3};
     }
     int fails = 0;
 
     report_match matched[2] = {{"boby_parser@2.2.0", "be8164d46ffb", 0.3187, 7}, {"x\"y", "g", NAN, 1}};
     package_report all = {.package = "@scope/pkg\"q", .version = "1.0.0", .score = 0.0, .has_score = 1,
-                          .threshold = 0.5, .has_threshold = 1, .seconds = 1.5, .has_seconds = 1,
+                          .ignored_small_chunks = 2, .low_confidence = 1,
+                          .threshold = 0.5, .has_threshold = 1, .flagged = 1,
+                          .seconds = 1.5, .has_seconds = 1,
                           .matched = matched, .matched_count = 2, .chunks = rows, .count = 4};
     snprintf(path, sizeof path, "%s/all_chunks.json", dir);
     fails += write_report_file(path, &all) != 0;

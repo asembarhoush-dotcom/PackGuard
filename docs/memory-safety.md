@@ -83,3 +83,30 @@ The pool, the batch scoring and the index changed how threads share memory, so t
 - `-fanalyzer`, `load_references()`: "use of uninitialized value" for `file_group[i]`. `assign_names()` writes `file_id[i]` for every file before that line, and when it fails `load_references()` returns before reaching it; the analyser does not follow the function-pointer call. Valgrind's `--track-origins` reports nothing.
 - cppcheck, `add_file()`: "memory leak: copy". The string is moved into `list->items[...]` and freed by `free_files()`.
 - cppcheck, `compresser.c`: "undefined function-like macro `UINT32_C`". cppcheck was not given the system headers; the code compiles cleanly with every compiler.
+
+### Rerun after v3 (2026-10-27)
+
+The v3 changes add `loaded_file.kind`, the per-chunk report path, the
+`is_boilerplate()` temporary buffer and the `used[]` score array in
+`write_package()`. `is_boilerplate()` owns one `malloc(len)` buffer and frees it
+on every return path; `used[]` is freed at the single `done` label; the new
+report fields borrow the same chunk text and reference names as before.
+
+| Check | Result |
+|---|---|
+| AddressSanitizer + UndefinedBehaviorSanitizer with leak detection (GCC 15.2, `-O1 -g`) | 0 reports across `write_package_test`, `load_references_test`, `collect_files_test`, `is_boilerplate_test`, `-m 0`, `-p 0` and `-p 1` |
+| ThreadSanitizer, 4 threads | 0 data races |
+| Valgrind memcheck, `--leak-check=full --errors-for-leak-kinds=all --track-origins=yes` | 0 bytes leaked; 2 uninitialised-value reports inside liblzma's `bt_skip_func` / `lzma_lz_encoder_init`, none in PackGuard code |
+| Strict warnings `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wcast-qual -Wformat=2 -Wnull-dereference` | 0 warnings |
+| Batch mode against split mode, `tests/score_chunks_test` | 12 of 12 reports identical apart from `seconds` |
+| Scanner `flagged` against an independent Python recomputation, 964 v2 reports | 964 of 964 agree |
+| Boilerplate filter on the v2 reference set | 322 of 51,351 distinct chunks dropped; 0 dropped in the test reference sets |
+| `is_boilerplate()` fixtures | 11 of 11 cases as expected |
+
+The two Valgrind reports are not from v3 code. Their complete stack is
+`bt_skip_func` → `lzma_mf_bt4_skip` → `lzma_lz_encoder_init` →
+`lzma_raw_encoder`, with the uninitialised allocation made by
+`lzma_lz_encoder_init`. Earlier runs recorded 0 errors with a different liblzma
+and a different set of inputs; this run used the system liblzma 5.8.3 and the
+BT4 match finder. No report names a PackGuard function other than the
+`compressed_size_given()` call that enters liblzma.

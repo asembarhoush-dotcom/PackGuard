@@ -22,6 +22,7 @@ def run(args, log):
 pkg = os.path.join(HERE, "pkg@1.0.0")
 shutil.rmtree(pkg, ignore_errors=True)
 write(os.path.join(pkg, "a.js"), "module.exports = function a() { return 1; };\n")
+write(os.path.join(pkg, "large.js"), "console.log('a JavaScript chunk above the 256-byte rule');\n" * 6)
 write(os.path.join(pkg, "b.cjs"), "exports.b = () => 'b';\n")
 write(os.path.join(pkg, "c.mjs"), "export const c = 3;\n")
 write(os.path.join(pkg, "UPPER.JS"), "var upper = true;\n")
