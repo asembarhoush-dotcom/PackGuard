@@ -63,6 +63,9 @@ typedef struct {
     size_t candidates;
     uint32_t *digest_len;
     lzjd_index index;
+    uint64_t *exact_hash;
+    size_t *exact_ref;
+    size_t exact_cap;
     struct scan_worker *workers;
     struct thread_pool *pool;
     size_t nthreads;
@@ -85,6 +88,16 @@ typedef struct {
  * Returns 0 on success, -1 on failure (with a message on stderr).
  */
 int collect_files(file_list *list, const char *path);
+
+/*
+ * Like collect_files(), with content-defined chunking when use_cdc is
+ * nonzero. When normalise is nonzero only JavaScript files are collected and
+ * each is replaced by its normalised token stream (see normalise_js()), with
+ * encoded payloads decoded when decode is nonzero.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
+int collect_files_ex(file_list *list, const char *path, int use_cdc, int normalise, int decode);
 
 /* Frees every file in list and resets it to empty. */
 void free_files(file_list *list);
@@ -121,6 +134,19 @@ void free_files(file_list *list);
  */
 int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
                     int drop_boilerplate);
+
+/*
+ * Like load_references(), with content-defined chunking when use_cdc is
+ * nonzero, normalised JavaScript references when normalise is nonzero, and
+ * encoded payloads decoded when decode is nonzero. When use_exact_hash is
+ * nonzero an open-addressed hash table of the kept chunks is built, so a
+ * byte-identical target chunk scores 0 without running NCD.
+ *
+ * Returns 0 on success, -1 on failure; set is left empty on failure.
+ */
+int load_references_ex(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
+                       int drop_boilerplate, int use_cdc, int normalise, int decode,
+                       int use_exact_hash);
 
 /*
  * Scores chunk against every reference on all threads:

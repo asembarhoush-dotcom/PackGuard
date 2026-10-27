@@ -43,6 +43,15 @@ typedef struct {
     const char *version;
     double score;
     int has_score;
+    double score_raw;
+    int has_score_raw;
+    double score_normalized;
+    int has_score_normalized;
+    const char *score_view;
+    const char *normalized_match_file;
+    const char *normalized_match_package;
+    size_t normalized_match_start;
+    double normalized_match_ncd;
     size_t ignored_small_chunks;
     int low_confidence;
     double threshold;

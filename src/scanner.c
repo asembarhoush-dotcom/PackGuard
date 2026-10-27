@@ -3,6 +3,7 @@
 #include "boilerplate.h"
 #include "compresser.h"
 #include "manifest.h"
+#include "normalise.h"
 #include "platform.h"
 #include "prefilter.h"
 
@@ -139,18 +140,50 @@ static int add_chunks(file_list *list, const char *path, chunk_list chunks, file
 }
 
 /*
- * Reads and splits the file at path and appends it to list.
- * Files with no chunks (empty files) are not added.
+ * Reads and splits the file at path and appends it to list, using
+ * content-defined chunking when use_cdc is nonzero. Files with no chunks
+ * (empty files) are not added.
  * Returns 0 on success, -1 on failure.
  */
-static int add_file(file_list *list, const char *path, file_kind kind)
+static int add_file(file_list *list, const char *path, file_kind kind, int use_cdc)
 {
     chunk_list chunks;
-    if (split_file(path, &chunks) != 0) {
+    int rc = use_cdc ? split_file_cdc(path, &chunks) : split_file(path, &chunks);
+    if (rc != 0) {
         fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
         return -1;
     }
     return add_chunks(list, path, chunks, kind);
+}
+
+/*
+ * Reads the JavaScript file at path, replaces it with its normalised token
+ * stream (decoding encoded payloads when decode is nonzero), splits that
+ * stream and appends it to list under the original path.
+ * Returns 0 on success, -1 on failure.
+ */
+static int add_normalised_file(file_list *list, const char *path, int use_cdc, int decode)
+{
+    size_t len = 0;
+    unsigned char *raw = read_file(path, &len);
+    if (raw == NULL) {
+        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    size_t norm_len = 0;
+    unsigned char *norm = normalise_js(raw, len, decode, &norm_len);
+    free(raw);
+    if (norm == NULL) {
+        fprintf(stderr, "packguard: %s: normalising failed\n", path);
+        return -1;
+    }
+    chunk_list chunks;
+    int rc = use_cdc ? split_buffer_cdc(norm, norm_len, &chunks) : split_buffer(norm, norm_len, &chunks);
+    if (rc != 0) {
+        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    return add_chunks(list, path, chunks, FILE_JS);
 }
 
 /*
@@ -189,9 +222,11 @@ static int add_manifest(file_list *list, const char *path)
  * package.json, is added whole. Each added file is tagged with its kind:
  * FILE_INSTALL_SCRIPT for the two script names, FILE_JS for the three
  * JavaScript extensions, FILE_OTHER for any other file passed directly.
+ * When normalise is nonzero only JavaScript files are added, each as its
+ * normalised token stream. use_cdc selects content-defined chunking.
  * Returns 0 on success, -1 on failure.
  */
-static int collect(file_list *list, const char *path, int depth)
+static int collect(file_list *list, const char *path, int depth, int use_cdc, int normalise, int decode)
 {
     path_kind kind = path_type(path);
     if (kind == PATH_MISSING) {
@@ -200,11 +235,13 @@ static int collect(file_list *list, const char *path, int depth)
     }
     if (kind == PATH_FILE) {
         if (has_name(path, "package.json"))
-            return depth <= 1 ? add_manifest(list, path) : 0;
+            return normalise || depth > 1 ? 0 : add_manifest(list, path);
+        if (normalise)
+            return is_js(path) ? add_normalised_file(list, path, use_cdc, decode) : 0;
         if (depth != 0 && !is_js(path) && !has_name(path, SCRIPTS_FILE))
             return 0;
         return add_file(list, path, has_name(path, SCRIPTS_FILE) ? FILE_INSTALL_SCRIPT
-                               : is_js(path) ? FILE_JS : FILE_OTHER);
+                               : is_js(path) ? FILE_JS : FILE_OTHER, use_cdc);
     }
     if (kind != PATH_DIR)
         return 0;
@@ -228,7 +265,7 @@ static int collect(file_list *list, const char *path, int depth)
             break;
         }
         snprintf(child, len, "%s%s%s", path, sep, names[i]);
-        rc = collect(list, child, depth + 1);
+        rc = collect(list, child, depth + 1, use_cdc, normalise, decode);
         free(child);
     }
     free_names(names, n);
@@ -237,7 +274,12 @@ static int collect(file_list *list, const char *path, int depth)
 
 int collect_files(file_list *list, const char *path)
 {
-    return collect(list, path, 0);
+    return collect(list, path, 0, 0, 0, 0);
+}
+
+int collect_files_ex(file_list *list, const char *path, int use_cdc, int normalise, int decode)
+{
+    return collect(list, path, 0, use_cdc, normalise, decode);
 }
 
 void free_files(file_list *list)
@@ -690,8 +732,88 @@ done:
     return rc;
 }
 
-int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
-                    int drop_boilerplate)
+/* Returns the 64-bit FNV-1a hash of one chunk. */
+static uint64_t chunk_hash(const file_chunk *chunk)
+{
+    uint64_t h = UINT64_C(14695981039346656037);
+    for (size_t i = 0; i < chunk->length; i++) {
+        h ^= chunk->data[i];
+        h *= UINT64_C(1099511628211);
+    }
+    return h;
+}
+
+/*
+ * Builds an open-addressed table over the kept reference chunks, keyed by
+ * their content hash and verified with memcmp on lookup.
+ * Returns 0 on success, -1 if memory runs out.
+ */
+static int exact_hash_build(reference_set *set)
+{
+    size_t cap = 1;
+    while (cap < set->count * 2) {
+        if (cap > SIZE_MAX / 2)
+            return -1;
+        cap *= 2;
+    }
+    uint64_t *hashes = malloc(cap * sizeof *hashes);
+    size_t *refs = malloc(cap * sizeof *refs);
+    if (hashes == NULL || refs == NULL) {
+        free(hashes);
+        free(refs);
+        return -1;
+    }
+    for (size_t i = 0; i < cap; i++)
+        refs[i] = SIZE_MAX;
+    for (size_t i = 0; i < set->count; i++) {
+        uint64_t h = chunk_hash(set->refs[i].chunk);
+        size_t pos = (size_t)h & (cap - 1);
+        while (refs[pos] != SIZE_MAX)
+            pos = (pos + 1) & (cap - 1);
+        hashes[pos] = h;
+        refs[pos] = i;
+    }
+    set->exact_hash = hashes;
+    set->exact_ref = refs;
+    set->exact_cap = cap;
+    return 0;
+}
+
+/* Returns the reference index of a byte-identical chunk, or SIZE_MAX. */
+static size_t exact_hash_find(const reference_set *set, const file_chunk *chunk)
+{
+    if (set->exact_cap == 0)
+        return SIZE_MAX;
+    uint64_t h = chunk_hash(chunk);
+    size_t pos = (size_t)h & (set->exact_cap - 1);
+    while (set->exact_ref[pos] != SIZE_MAX) {
+        if (set->exact_hash[pos] == h) {
+            size_t r = set->exact_ref[pos];
+            const file_chunk *c = set->refs[r].chunk;
+            if (c->length == chunk->length && memcmp(c->data, chunk->data, c->length) == 0)
+                return r;
+        }
+        pos = (pos + 1) & (set->exact_cap - 1);
+    }
+    return SIZE_MAX;
+}
+
+/* Marks an exact reference hit as distance zero in the group results. */
+static void group_hit(const reference_set *set, size_t ref, double *group_best)
+{
+    if (group_best == NULL)
+        return;
+    for (size_t g = 0; g < set->group_count; g++)
+        group_best[g] = DBL_MAX;
+    const ref_chunk *r = &set->refs[ref];
+    group_best[r->group] = 0.0;
+    for (size_t e = 0; e < r->extra_count; e++)
+        group_best[set->extra_groups[r->extra_first + e]] = 0.0;
+}
+
+int load_references_ex(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
+                       int drop_boilerplate, int use_cdc, int normalise, int decode,
+                       int use_exact_hash)
 {
     size_t *file_group = NULL;
     *set = (reference_set){0};
@@ -711,7 +833,7 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
         goto fail;
     }
 
-    if (collect(&set->files, dir, 0) != 0)
+    if (collect(&set->files, dir, 0, use_cdc, normalise, decode) != 0)
         goto fail;
     for (size_t i = 0; i < set->files.count; i++)
         set->total_chunks += set->files.items[i].chunks.count;
@@ -757,6 +879,8 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
             goto fail;
         }
     }
+    if (use_exact_hash && exact_hash_build(set) != 0)
+        goto fail;
 
     pass p = {.refs = set->refs, .count = set->count};
     if (run_pass(set, &p, cache_worker) != 0)
@@ -772,6 +896,12 @@ fail:
     free(file_group);
     free_references(set);
     return -1;
+}
+
+int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
+                    int drop_boilerplate)
+{
+    return load_references_ex(set, dir, nthreads, candidates, drop_boilerplate, 0, 0, 0, 0);
 }
 
 /*
@@ -799,6 +929,12 @@ static int pick_candidates(const reference_set *set, struct scan_worker *w, cons
 static int score_alone(const reference_set *set, struct scan_worker *w, const file_chunk *chunk,
                        chunk_score *out, double *group_best)
 {
+    size_t exact = exact_hash_find(set, chunk);
+    if (exact != SIZE_MAX) {
+        *out = (chunk_score){0.0, exact};
+        group_hit(set, exact, group_best);
+        return 0;
+    }
     pass p = {.refs = set->refs, .count = set->candidates ? set->candidates : set->count,
               .target = chunk, .group_count = set->group_count, .extra_groups = set->extra_groups,
               .want_groups = group_best != NULL, .subset = set->candidates ? w->subset : NULL};
@@ -863,6 +999,12 @@ int score_chunk(reference_set *set, const file_chunk *chunk, chunk_score *out, d
 {
     if (set == NULL || set->count == 0 || chunk == NULL || out == NULL)
         return -1;
+    size_t exact = exact_hash_find(set, chunk);
+    if (exact != SIZE_MAX) {
+        *out = (chunk_score){0.0, exact};
+        group_hit(set, exact, group_best);
+        return 0;
+    }
     struct scan_worker *lead = &set->workers[0];
     if (set->candidates > 0 && pick_candidates(set, lead, chunk) != 0)
         return -1;
@@ -917,6 +1059,8 @@ void free_references(reference_set *set)
     free(set->extra_groups);
     lzjd_index_free(&set->index);
     free(set->digest_len);
+    free(set->exact_hash);
+    free(set->exact_ref);
     free(set->refs);
     free_files(&set->files);
     *set = (reference_set){0};

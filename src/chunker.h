@@ -7,6 +7,9 @@
 #define CHUNK_SIZE      (8u * 1024u)
 #define CHUNK_OVERLAP   (4u * 1024u)
 #define CHUNK_STEP      (CHUNK_SIZE - CHUNK_OVERLAP)
+#define CDC_MIN_SIZE    (2u * 1024u)
+#define CDC_MAX_SIZE    (16u * 1024u)
+#define CDC_MASK        (8u * 1024u - 1u)
 
 /* One window of a file: its start offset, its length and a pointer into the shared file buffer. */
 typedef struct {
@@ -44,6 +47,27 @@ int split_file(const char *path, chunk_list *out);
  * Returns 0 on success. On failure returns -1, sets errno and leaves out empty.
  */
 int split_buffer(unsigned char *buf, size_t size, chunk_list *out);
+
+/*
+ * Describes size bytes in buf as content-defined chunks, taking ownership
+ * of buf. A file of SPLIT_THRESHOLD bytes or less becomes one chunk, as in
+ * split_buffer(). A larger file is cut at points chosen by a rolling hash of
+ * the content, with chunks between CDC_MIN_SIZE and CDC_MAX_SIZE bytes; an
+ * unchanged region keeps its boundaries when bytes are inserted, deleted or
+ * moved elsewhere in the file. Only the last chunk can be shorter than
+ * CDC_MIN_SIZE.
+ *
+ * Returns 0 on success. On failure returns -1, sets errno and leaves out empty.
+ */
+int split_buffer_cdc(unsigned char *buf, size_t size, chunk_list *out);
+
+/*
+ * Reads the file at path and describes it as content-defined chunks, exactly
+ * as split_buffer_cdc() does for a buffer with that content.
+ *
+ * Returns 0 on success. On failure returns -1, sets errno and leaves out empty.
+ */
+int split_file_cdc(const char *path, chunk_list *out);
 
 /*
  * Reads the whole file at path into a malloc'd buffer and stores its size

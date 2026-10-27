@@ -111,6 +111,27 @@ int write_report(FILE *out, const package_report *r)
         json_number(out, r->score);
     else
         fputs("null", out);
+    if (r->has_score_raw) {
+        fputs(",\n  \"score_raw\": ", out);
+        json_number(out, r->score_raw);
+    }
+    if (r->has_score_normalized) {
+        fputs(",\n  \"score_normalized\": ", out);
+        json_number(out, r->score_normalized);
+    }
+    if (r->score_view != NULL) {
+        fputs(",\n  \"score_view\": ", out);
+        json_string(out, r->score_view);
+    }
+    if (r->normalized_match_file != NULL) {
+        fputs(",\n  \"normalized_match\": { \"file\": ", out);
+        json_string(out, r->normalized_match_file);
+        fputs(", \"package\": ", out);
+        json_string(out, r->normalized_match_package);
+        fprintf(out, ", \"start\": %zu, \"ncd\": ", r->normalized_match_start);
+        json_number(out, r->normalized_match_ncd);
+        fputs(" }", out);
+    }
     if (r->ignored_small_chunks > 0)
         fprintf(out, ",\n  \"ignored_small_chunks\": %zu", r->ignored_small_chunks);
     if (r->low_confidence)
