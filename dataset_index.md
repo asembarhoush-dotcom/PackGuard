@@ -79,6 +79,19 @@ For every `mal_newver` and `mal_newname` file the manifest records whether it is
 
 The benign sets are labelled benign because they are on the registry, not deprecated and not in any DataDog list; they were not audited by hand. The long-tail set is small (25) because few search results met the filters within the size cap.
 
+## v4 mangling benchmark
+
+| | |
+|---|---|
+| Location | WSL only, `~/pg-v4/targets/`, `~/pg-v4/scan/` and `~/pg-v4/reports/`; not committed (live malware) |
+| Source | v1 detailed test set: 120 malware (50 `mal_known`, 35 `mal_newver`, 35 `mal_newname`) and 58 benign packages with JavaScript (41 `ben_popular`, 17 `ben_longtail`) |
+| Transforms | T1 format, T2 rename identifiers/strings/numbers/files, T3 18 KiB dead-code padding, T4 whole-file base64 |
+| Size | 712 targets: 480 malware variants and 232 benign controls across the four tiers |
+| Built | 2026-10-27 by `experiments/v4/scripts/mangle.py` (committed) |
+| Results | [`experiments/v4/`](experiments/v4/README.md) |
+
+The original sample stays in the v1 reference set and only the transformed copy is scored, so this measures known-family robustness, not an unseen family or a new campaign. Some source packages have no JavaScript, which is why the benign set is 58 packages rather than 75. No encrypted dataset zip changed.
+
 ## v2 malware set
 
 | | |

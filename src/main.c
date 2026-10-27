@@ -23,6 +23,9 @@ typedef struct {
     size_t candidates;
     size_t min_js_bytes;
     int drop_boilerplate;
+    int use_cdc;
+    int normalised;
+    int decode;
     double threshold;
     double script_threshold;
     const char *out_file;
@@ -36,8 +39,8 @@ typedef struct {
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-t threshold]\n"
-            "                 [-s script_threshold] [-k groups]\n"
+            "usage: packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-c 0|1|2]\n"
+            "                 [-n 0|1] [-e 0|1] [-t threshold] [-s script_threshold] [-k groups]\n"
             "                 [-o report.json | -d report_dir]\n"
             "                 <reference_dir> <package_path>...\n"
             "  Scores every .js/.cjs/.mjs file and the root package.json install scripts\n"
@@ -68,7 +71,8 @@ static void usage(void)
 static int parse_args(int argc, char **argv, options *opt)
 {
     *opt = (options){.nthreads = cpu_count(), .candidates = DEFAULT_CANDIDATES,
-                     .min_js_bytes = 256, .drop_boilerplate = 1, .threshold = -1.0,
+                     .min_js_bytes = 256, .drop_boilerplate = 1, .use_cdc = 0,
+                     .normalised = 0, .decode = 1, .threshold = -1.0,
                      .script_threshold = 0.45};
     int i = 1;
     for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
@@ -79,7 +83,7 @@ static int parse_args(int argc, char **argv, options *opt)
         }
         if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0)
             return 1;
-        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkpmbs", a[1]) == NULL) {
+        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkpmbscne", a[1]) == NULL) {
             fprintf(stderr, "packguard: bad option %s\n", a);
             return -1;
         }
@@ -120,6 +124,23 @@ static int parse_args(int argc, char **argv, options *opt)
                 return -1;
             }
             opt->drop_boilerplate = (int)n;
+        } else if (a[1] == 'c') {
+            long n = strtol(value, &end, 10);
+            if (*end != '\0' || n < 0 || n > 2) {
+                fprintf(stderr, "packguard: -c needs 0, 1 or 2\n");
+                return -1;
+            }
+            opt->use_cdc = (int)n;
+        } else if (a[1] == 'n' || a[1] == 'e') {
+            long n = strtol(value, &end, 10);
+            if (*end != '\0' || (n != 0 && n != 1)) {
+                fprintf(stderr, "packguard: -%c needs 0 or 1\n", a[1]);
+                return -1;
+            }
+            if (a[1] == 'n')
+                opt->normalised = (int)n;
+            else
+                opt->decode = (int)n;
         } else if (a[1] == 't') {
             opt->threshold = strtod(value, &end);
             if (*end != '\0' || opt->threshold < 0.0) {
@@ -279,12 +300,15 @@ static size_t matched_packages(const reference_set *refs, const chunk_score *sco
     return n;
 }
 
-/* One package of a batch: its path, its files, where its chunks start in the batch and its time. */
+/* One package of a batch: its path, its raw and normalised files, where their chunks start, and its time. */
 typedef struct {
     const char *path;
     file_list targets;
+    file_list norm_targets;
     size_t first;
     size_t count;
+    size_t norm_first;
+    size_t norm_count;
     double seconds;
     int loaded;
 } package_job;
@@ -309,9 +333,10 @@ static const char *kind_report_name(file_kind kind)
  * marked low_confidence. Progress goes to stderr.
  * Returns 0 on success, -1 on failure.
  */
-static int write_package(const reference_set *refs, const options *opt, const package_job *job,
-                         const chunk_score *scores, report_near *nears, const size_t *near_counts,
-                         size_t k)
+static int write_package(const reference_set *refs, const reference_set *norm_refs,
+                         const options *opt, const package_job *job,
+                         const chunk_score *scores, const chunk_score *norm_scores,
+                         report_near *nears, const size_t *near_counts, size_t k)
 {
     int status = -1;
     size_t count = job->count;
@@ -332,7 +357,7 @@ static int write_package(const reference_set *refs, const options *opt, const pa
         snprintf(out_path, len, "%s/%.*s.json", opt->out_dir, (int)blen, base);
     }
 
-    double best = DBL_MAX;
+    double best_raw = DBL_MAX;
     size_t ignored = 0;
     size_t fallback = SIZE_MAX;
     size_t fallback_len = 0;
@@ -372,25 +397,45 @@ static int write_package(const reference_set *refs, const options *opt, const pa
                     fallback_len = c->length;
                     fallback = s;
                 }
-            } else if (scores[s].ncd < best) {
-                best = scores[s].ncd;
+            } else if (scores[s].ncd < best_raw) {
+                best_raw = scores[s].ncd;
             }
             fprintf(stderr, "packguard:   %s @%zu: ncd %.4f\n", file, c->offset, scores[s].ncd);
         }
     }
 
     int low_confidence = 0;
-    if (best == DBL_MAX && fallback != SIZE_MAX) {
-        best = scores[fallback].ncd;
+    if (best_raw == DBL_MAX && fallback != SIZE_MAX) {
+        best_raw = scores[fallback].ncd;
         rows[fallback].ignored = 0;
         ignored--;
         low_confidence = 1;
     }
+
+    double best_norm = DBL_MAX;
+    size_t norm_best = SIZE_MAX;
+    for (size_t i = 0; norm_scores != NULL && i < job->norm_count; i++) {
+        if (norm_scores[i].ncd < best_norm) {
+            best_norm = norm_scores[i].ncd;
+            norm_best = i;
+        }
+    }
+    if (best_norm < best_raw)
+        low_confidence = 0;
+
+    double best = best_raw < best_norm ? best_raw : best_norm;
     int has_score = count > 0 && best != DBL_MAX;
+    const char *score_view = NULL;
+    if (best_norm < best_raw)
+        score_view = "normalized";
+    else if (best_raw < DBL_MAX)
+        score_view = "raw";
     int flagged = 0;
     for (size_t i = 0; i < count; i++)
         if (!rows[i].ignored && rows[i].flagged)
             flagged = 1;
+    if (opt->threshold >= 0.0 && best_norm <= opt->threshold)
+        flagged = 1;
 
     char name[512], version[512];
     package_id(pkg, name, version, sizeof name);
@@ -399,11 +444,21 @@ static int write_package(const reference_set *refs, const options *opt, const pa
         if (!rows[i].ignored)
             used[used_count++] = scores[i];
     size_t matched_count = matched_packages(refs, used, used_count, matched);
+    const ref_chunk *nm = norm_best != SIZE_MAX ? &norm_refs->refs[norm_scores[norm_best].ref] : NULL;
     package_report report = {
         .package = name,
         .version = version,
         .score = best,
         .has_score = has_score,
+        .score_raw = best_raw,
+        .has_score_raw = opt->normalised && best_raw != DBL_MAX,
+        .score_normalized = best_norm,
+        .has_score_normalized = norm_scores != NULL && best_norm != DBL_MAX,
+        .score_view = opt->normalised ? score_view : NULL,
+        .normalized_match_file = nm ? relative_to(norm_refs->files.items[nm->file].path, opt->ref_dir) : NULL,
+        .normalized_match_package = nm ? norm_refs->package_names[norm_refs->file_package[nm->file]] : NULL,
+        .normalized_match_start = nm ? nm->chunk->offset : 0,
+        .normalized_match_ncd = nm ? norm_scores[norm_best].ncd : 0.0,
         .ignored_small_chunks = ignored,
         .low_confidence = low_confidence,
         .threshold = opt->threshold,
@@ -427,9 +482,9 @@ static int write_package(const reference_set *refs, const options *opt, const pa
         goto done;
     }
     if (has_score)
-        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f%s, %.1f s, closest %s (%s)\n",
+        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f%s, raw %.4f, normalised %.4f, %.1f s\n",
                 pkg, job->targets.count, count, best, low_confidence ? " (low confidence)" : "",
-                job->seconds, matched[0].package, matched[0].group);
+                best_raw, best_norm, job->seconds);
     else
         fprintf(stderr, "packguard: %s: no JavaScript or install scripts, score null, %.1f s\n", pkg,
                 job->seconds);
@@ -452,31 +507,48 @@ done:
  * seconds are its load time plus the scoring time of its chunks.
  * Returns the number of packages that failed.
  */
-static int scan_batch(reference_set *refs, const options *opt, char **packages, size_t n)
+static int scan_batch(reference_set *refs, reference_set *norm_refs, const options *opt,
+                      char **packages, size_t n)
 {
     int failures = 0;
     size_t k = opt->near_k < refs->group_count ? opt->near_k : refs->group_count;
     package_job *jobs = calloc(n, sizeof *jobs);
     const file_chunk **chunks = NULL;
+    const file_chunk **norm_chunks = NULL;
     chunk_score *scores = NULL;
+    chunk_score *norm_scores = NULL;
     double *seconds = NULL;
+    double *norm_seconds = NULL;
     double *group_rows = NULL;
     report_near *nears = NULL;
     size_t *near_counts = NULL;
     int scored = 0;
+    int norm_scored = 0;
     if (jobs == NULL)
         goto report;
 
     size_t total = 0;
+    size_t norm_total = 0;
     for (size_t j = 0; j < n; j++) {
         double t0 = now_seconds();
         jobs[j].path = packages[j];
-        if (collect_files(&jobs[j].targets, packages[j]) == 0) {
+        if (collect_files_ex(&jobs[j].targets, packages[j], opt->use_cdc == 1, 0, 0) == 0) {
             jobs[j].loaded = 1;
             jobs[j].first = total;
             for (size_t i = 0; i < jobs[j].targets.count; i++)
                 jobs[j].count += jobs[j].targets.items[i].chunks.count;
             total += jobs[j].count;
+            if (norm_refs != NULL) {
+                if (collect_files_ex(&jobs[j].norm_targets, packages[j], opt->use_cdc >= 1, 1,
+                                     opt->decode) != 0) {
+                    jobs[j].loaded = 0;
+                } else {
+                    jobs[j].norm_first = norm_total;
+                    for (size_t i = 0; i < jobs[j].norm_targets.count; i++)
+                        jobs[j].norm_count += jobs[j].norm_targets.items[i].chunks.count;
+                    norm_total += jobs[j].norm_count;
+                }
+            }
         }
         jobs[j].seconds = now_seconds() - t0;
     }
@@ -485,20 +557,31 @@ static int scan_batch(reference_set *refs, const options *opt, char **packages, 
     chunks = malloc((total ? total : 1) * sizeof *chunks);
     scores = malloc((total ? total : 1) * sizeof *scores);
     seconds = calloc(total ? total : 1, sizeof *seconds);
+    if (norm_refs != NULL) {
+        norm_chunks = malloc((norm_total ? norm_total : 1) * sizeof *norm_chunks);
+        norm_scores = malloc((norm_total ? norm_total : 1) * sizeof *norm_scores);
+        norm_seconds = calloc(norm_total ? norm_total : 1, sizeof *norm_seconds);
+    }
     if (k > 0) {
         group_rows = malloc(slice * refs->group_count * sizeof *group_rows);
         nears = malloc((total ? total : 1) * k * sizeof *nears);
         near_counts = malloc((total ? total : 1) * sizeof *near_counts);
     }
     if (chunks == NULL || scores == NULL || seconds == NULL
+        || (norm_refs != NULL && (norm_chunks == NULL || norm_scores == NULL || norm_seconds == NULL))
         || (k > 0 && (group_rows == NULL || nears == NULL || near_counts == NULL)))
         goto report;
 
     size_t s = 0;
-    for (size_t j = 0; j < n; j++)
+    size_t ns = 0;
+    for (size_t j = 0; j < n; j++) {
         for (size_t i = 0; jobs[j].loaded && i < jobs[j].targets.count; i++)
             for (size_t c = 0; c < jobs[j].targets.items[i].chunks.count; c++)
                 chunks[s++] = &jobs[j].targets.items[i].chunks.chunks[c];
+        for (size_t i = 0; jobs[j].loaded && norm_refs != NULL && i < jobs[j].norm_targets.count; i++)
+            for (size_t c = 0; c < jobs[j].norm_targets.items[i].chunks.count; c++)
+                norm_chunks[ns++] = &jobs[j].norm_targets.items[i].chunks.chunks[c];
+    }
 
     scored = 1;
     for (size_t at = 0; at < total; at += slice) {
@@ -512,28 +595,43 @@ static int scan_batch(reference_set *refs, const options *opt, char **packages, 
             near_counts[at + i] = closest_groups(group_rows + i * refs->group_count, refs->group_names,
                                                  refs->group_count, k, nears + (at + i) * k);
     }
+    norm_scored = 1;
+    if (scored && norm_refs != NULL && norm_total > 0) {
+        if (score_chunks(norm_refs, norm_chunks, norm_total, norm_scores, NULL, norm_seconds) != 0) {
+            fprintf(stderr, "packguard: scoring the normalised view failed\n");
+            norm_scored = 0;
+        }
+    }
 
 report:
     for (size_t j = 0; j < n; j++) {
-        if (jobs == NULL || !jobs[j].loaded || !scored) {
+        if (jobs == NULL || !jobs[j].loaded || !scored || !norm_scored) {
             fprintf(stderr, "packguard: %s: scan failed\n", packages[j]);
             failures++;
             continue;
         }
         for (size_t c = 0; c < jobs[j].count; c++)
             jobs[j].seconds += seconds[jobs[j].first + c];
-        if (write_package(refs, opt, &jobs[j], scores + jobs[j].first,
+        for (size_t c = 0; norm_refs != NULL && c < jobs[j].norm_count; c++)
+            jobs[j].seconds += norm_seconds[jobs[j].norm_first + c];
+        if (write_package(refs, norm_refs, opt, &jobs[j], scores + jobs[j].first,
+                          norm_refs != NULL ? norm_scores + jobs[j].norm_first : NULL,
                           k > 0 ? nears + jobs[j].first * k : NULL,
                           k > 0 ? near_counts + jobs[j].first : NULL, k) != 0) {
             fprintf(stderr, "packguard: %s: scan failed\n", packages[j]);
             failures++;
         }
     }
-    for (size_t j = 0; jobs != NULL && j < n; j++)
+    for (size_t j = 0; jobs != NULL && j < n; j++) {
         free_files(&jobs[j].targets);
+        free_files(&jobs[j].norm_targets);
+    }
     free(near_counts);
     free(nears);
     free(group_rows);
+    free(norm_seconds);
+    free(norm_scores);
+    free(norm_chunks);
     free(seconds);
     free(scores);
     free(chunks);
@@ -562,7 +660,10 @@ int main(int argc, char **argv)
 
     double t0 = now_seconds();
     reference_set refs;
-    if (load_references(&refs, opt.ref_dir, opt.nthreads, opt.candidates, opt.drop_boilerplate) != 0) {
+    reference_set norm_refs;
+    int has_norm = opt.normalised;
+    if (load_references_ex(&refs, opt.ref_dir, opt.nthreads, opt.candidates, opt.drop_boilerplate,
+                           opt.use_cdc == 1, 0, 0, 0) != 0) {
         fprintf(stderr, "packguard: loading references failed\n");
         return 1;
     }
@@ -575,12 +676,28 @@ int main(int argc, char **argv)
     else
         fprintf(stderr, "no prefilter: NCD on every chunk\n");
 
+    if (has_norm) {
+        double t1 = now_seconds();
+        if (load_references_ex(&norm_refs, opt.ref_dir, opt.nthreads, opt.candidates, 0,
+                               opt.use_cdc >= 1, 1, opt.decode, 1) != 0) {
+            fprintf(stderr, "packguard: loading normalised references failed\n");
+            free_references(&refs);
+            return 1;
+        }
+        fprintf(stderr, "packguard: normalised view: %zu reference files, %zu chunks, %zu distinct, "
+                "%zu packages, loaded in %.1f s\n",
+                norm_refs.files.count, norm_refs.total_chunks, norm_refs.count,
+                norm_refs.package_count, now_seconds() - t1);
+    }
+
     int failures = 0;
     for (size_t i = 0; i < opt.package_count; i += BATCH_PACKAGES) {
         size_t n = opt.package_count - i < BATCH_PACKAGES ? opt.package_count - i : BATCH_PACKAGES;
-        failures += scan_batch(&refs, &opt, opt.packages + i, n);
+        failures += scan_batch(&refs, has_norm ? &norm_refs : NULL, &opt, opt.packages + i, n);
     }
 
+    if (has_norm)
+        free_references(&norm_refs);
     free_references(&refs);
     return failures ? 1 : 0;
 }

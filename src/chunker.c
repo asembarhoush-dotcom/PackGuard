@@ -137,6 +137,99 @@ int split_buffer(unsigned char *buf, size_t size, chunk_list *out)
     return 0;
 }
 
+/*
+ * Mixes one byte into the rolling hash used for content-defined boundaries.
+ * The odd multiplier spreads the low bits, which the boundary mask tests.
+ */
+static uint64_t cdc_mix(unsigned char byte)
+{
+    return ((uint64_t)byte + 1u) * UINT64_C(0x9e3779b97f4a7c15);
+}
+
+/*
+ * Returns the length of the next content-defined chunk of remaining bytes,
+ * which must be larger than SPLIT_THRESHOLD. A gear-style rolling hash cuts
+ * at the first masked boundary at or after CDC_MIN_SIZE, or at CDC_MAX_SIZE
+ * when none is found. The cut is moved back when it would leave a final
+ * chunk shorter than CDC_MIN_SIZE.
+ */
+static size_t cdc_cut(const unsigned char *data, size_t remaining)
+{
+    size_t limit = remaining < CDC_MAX_SIZE ? remaining : CDC_MAX_SIZE;
+    uint64_t hash = 0;
+    size_t cut = limit;
+    for (size_t i = 0; i < limit; i++) {
+        hash = (hash << 1) + cdc_mix(data[i]);
+        if (i + 1 >= CDC_MIN_SIZE && (hash & CDC_MASK) == 0) {
+            cut = i + 1;
+            break;
+        }
+    }
+    if (cut < remaining && remaining - cut < CDC_MIN_SIZE) {
+        if (remaining - CDC_MAX_SIZE >= CDC_MIN_SIZE)
+            cut = CDC_MAX_SIZE;
+        else
+            cut = remaining - CDC_MIN_SIZE;
+    }
+    return cut;
+}
+
+int split_buffer_cdc(unsigned char *buf, size_t size, chunk_list *out)
+{
+    if (out == NULL) {
+        free(buf);
+        errno = EINVAL;
+        return -1;
+    }
+    *out = (chunk_list){0};
+    if (buf == NULL && size > 0) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    size_t max_count = 0;
+    if (size > 0)
+        max_count = size <= SPLIT_THRESHOLD ? 1 : size / CDC_MIN_SIZE + 1;
+    file_chunk *chunks = NULL;
+    if (max_count > 0) {
+        chunks = malloc(max_count * sizeof *chunks);
+        if (chunks == NULL) {
+            free(buf);
+            return -1;
+        }
+    }
+
+    size_t count = 0;
+    size_t start = 0;
+    while (start < size) {
+        size_t remaining = size - start;
+        size_t length = remaining <= SPLIT_THRESHOLD ? remaining : cdc_cut(buf + start, remaining);
+        chunks[count++] = (file_chunk){start, length, buf + start};
+        start += length;
+    }
+
+    out->buffer = buf;
+    out->file_size = size;
+    out->chunks = chunks;
+    out->count = count;
+    return 0;
+}
+
+int split_file_cdc(const char *path, chunk_list *out)
+{
+    if (out == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    *out = (chunk_list){0};
+
+    size_t size = 0;
+    unsigned char *buf = read_file(path, &size);
+    if (buf == NULL)
+        return -1;
+    return split_buffer_cdc(buf, size, out);
+}
+
 void free_chunks(chunk_list *list)
 {
     if (list == NULL)

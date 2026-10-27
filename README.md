@@ -21,8 +21,8 @@ PackGuard tests whether we can have both: accurate detection that runs on an ord
 
 ```mermaid
 flowchart LR
-    A[npm package] --> B[Unpack & split files<br/>8 KB overlapping chunks for large files<br/>+ package.json install scripts]
-    B --> C[Stage 1: Compression scanner<br/>NCD vs. known malware, raw LZMA2]
+    A[npm package] --> B[Unpack & split files<br/>fixed or content-defined chunks<br/>+ package.json install scripts]
+    B --> C[Stage 1: Compression scanner<br/>NCD vs. known malware<br/>raw + normalised views]
     C -->|not suspicious| D[Clean]
     C -->|flagged| E[Stage 2: AI filter<br/>fine-tuned ModernBERT]
     E -->|false alarm| D
@@ -48,7 +48,8 @@ PackGuard/
 │   ├── scanner.c / .h          # Reference set, cached C(x), parallel NCD scoring
 │   ├── prefilter.c / .h        # LZJD digests and inverted index: picks the references worth an NCD
 │   ├── compresser.c / .h       # Raw LZMA2 compressed sizes via liblzma
-│   ├── chunker.c / .h          # Per-file split into 8 KB overlapping chunks
+│   ├── chunker.c / .h          # Per-file split: fixed 8 KB windows or content-defined chunks
+│   ├── normalise.c / .h        # Normalised JavaScript view and encoded-payload decoding
 │   ├── manifest.c / .h         # Install scripts (preinstall, install, postinstall) from package.json
 │   ├── report.c / .h           # JSON output per package
 │   ├── platform.c / .h         # Threads, directory walk, clock (POSIX and Win32)
@@ -61,7 +62,9 @@ PackGuard/
 ├── tests/                      # Test inputs and outputs, one folder per function
 ├── experiments/v1/             # v1 detailed test: scripts, results, analysis
 ├── experiments/v2/             # v2 dataset builder and examples-per-family ratio experiment
-├── docs/                       # Design notes (memory safety and ownership), v2 suggestions
+├── experiments/v3/             # v3 stage-1 accuracy: tiny chunks, boilerplate, script threshold
+├── experiments/v4/             # v4 renamed/mangled benchmark: T1-T4 transforms, results
+├── docs/                       # Design notes and stage-1 suggestions
 ├── scripts/build-windows.ps1   # Native Windows build (zig + static liblzma)
 ├── Makefile                    # Linux/macOS build
 ├── Dockerfile                  # Containerised scanner build
@@ -135,8 +138,8 @@ docker run --rm --network none -v "$PWD/refs:/refs:ro" -v "$PWD/samples:/work:ro
 ### Run a scan
 
 ```bash
-build/packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] \
-                [-t threshold] [-s script_threshold] [-k groups] \
+build/packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-c 0|1|2] \
+                [-n 0|1] [-e 0|1] [-t threshold] [-s script_threshold] [-k groups] \
                 [-o report.json | -d report_dir] <reference_dir> <package_path>...
 ```
 
@@ -146,6 +149,9 @@ build/packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] \
 | `-p` | LZJD prefilter: run NCD only on this many most similar reference chunks per chunk (default 256; `0` scores every reference, the exact brute-force mode) |
 | `-m` | Leave JavaScript chunks shorter than this many bytes out of the package score (default 256; `0` scores every chunk) |
 | `-b` | Drop reference chunks that hold only a compiled module stub (default `1`; `0` keeps every reference chunk) |
+| `-c` | Chunking: `0` fixed 8 KB windows, `1` content-defined chunks in both views, `2` content-defined chunks in the normalised view only (default `0`) |
+| `-n` | Also score a normalised JavaScript view and report `score_raw`, `score_normalized`, `score_view` and `normalized_match` (default `0`) |
+| `-e` | With `-n`, decode base64 and hex payloads before scoring (default `1`) |
 | `-t` | Add each chunk's `threshold` and `flagged`, and the package `flagged`, using this threshold for JavaScript and other file chunks |
 | `-s` | With `-t`, the threshold for install-script chunks (default 0.45) |
 | `-k` | Per chunk, also list the `k` closest reference groups (first folder below `reference_dir`, the code-shape folder in v1) |
@@ -159,6 +165,10 @@ The references are loaded and their C(x) cached once, then every package is scan
 **Tiny chunks.** Short JavaScript files are mostly compiled-TypeScript stubs and other boilerplate; they caused half of the benign false alarms in the v2 test. Chunks under `-m` bytes (default 256) are still scored and still appear in `chunks` with their text and match, but they are marked `"ignored": true` and do not set the package score. Install-script chunks are never ignored, whatever their size. If every chunk of a package is an ignored JavaScript chunk, the largest one sets the score and the report adds `"low_confidence": true`, so every package still has a score for stage 2.
 
 **Boilerplate references.** Compiled packages often contain re-export stubs: `"use strict"`, a TypeScript helper, an `__esModule` marker and `__exportStar(require(...), exports)` lines, with no code of their own. Malware packages carry the same stubs, so a benign package that re-exports a library looks similar. `-b` drops reference chunks that contain nothing else (see `is_boilerplate()` in `src/boilerplate.c`); `-b 0` keeps them for ablation.
+
+**Normalised view.** `-n 1` adds a second view for known malware that has been renamed or reformatted. Comments and whitespace are removed, string literals become `S`, numbers become `N`, and identifiers become `I`, while language keywords and common built-ins stay. Long base64 and hex payloads are decoded with `-e 1`, including a whole file that is one encoded payload. The scanner loads a normalised reference set once and scores each JavaScript file against it; the package score is the lower of the raw and normalised scores. An exact normalised hash gives a byte-identical normalised chunk a distance of 0 without running NCD. The report adds `score_raw`, `score_normalized`, `score_view` and `normalized_match`; v3 reports are unchanged without `-n`.
+
+**Content-defined chunking.** `-c 1` cuts large files at boundaries chosen by a gear-style rolling hash (2/8/16 KiB minimum/average/maximum) instead of fixed offsets, so an insertion or deleted block does not shift every later boundary. `-c 2` applies that only to the normalised view; `-c 0` is the fixed 8 KiB/4 KiB windows of v3. On the v4 mangling benchmark, CDC on the raw view lost recall on padded samples, while CDC on the normalised view alone added a small gain; see [`experiments/v4/`](experiments/v4/README.md).
 
 **Prefilter.** Comparing every chunk with all 69,249 v1 chunks by NCD takes about 34 s per small package. The scanner therefore first ranks the references with [LZJD](https://arxiv.org/abs/1708.03346) (Raff and Nicholas, 2017), the Lempel-Ziv Jaccard distance: the set of phrases an LZ compressor would build, compared by a bottom-1024 min-hash. It is the same idea as NCD without running the compressor, and takes milliseconds for all of v1. NCD then runs only on the 256 most similar chunks. On the v1 detailed test this is about 160× faster (0.23 s per package) and gave every malicious package exactly its brute-force score; see [`experiments/v1/`](experiments/v1/README.md).
 
@@ -217,9 +227,9 @@ The scanner writes one JSON file per package, which stage 2 reads:
 }
 ```
 
-Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one non-ignored chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. `score` is the lowest NCD among the chunks that were not ignored, and `null` when a package has no JavaScript and no install scripts. `flagged` is not `score <= threshold`: it is true when **any** non-ignored chunk is at or below its own threshold, so an install-script chunk is judged against `-s` (default 0.45) and every other chunk against `-t`. A JavaScript chunk shorter than `-m` is still in `chunks` with `"ignored": true`, but does not set `score`, does not appear in `matched_packages` and does not set the package `flagged`; when every chunk is ignored, the largest one sets the score and `"low_confidence": true` appears at the top. `kind` is `js`, `install_script` or `other`. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
+Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one non-ignored chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. With `-n`, the report also writes `score_raw`, `score_normalized`, `score_view` (`raw` or `normalized`) and `normalized_match` (the closest normalised reference chunk), and `score` is the lower of the two views. `score` is the lowest NCD among the chunks that were not ignored, and `null` when a package has no JavaScript and no install scripts. `flagged` is not `score <= threshold`: it is true when **any** non-ignored chunk is at or below its own threshold, so an install-script chunk is judged against `-s` (default 0.45) and every other chunk against `-t`. A JavaScript chunk shorter than `-m` is still in `chunks` with `"ignored": true`, but does not set `score`, does not appear in `matched_packages` and does not set the package `flagged`; when every chunk is ignored, the largest one sets the score and `"low_confidence": true` appears at the top. `kind` is `js`, `install_script` or `other`. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
 
-## Default configuration (v1)
+## Default configuration (v1 and v4)
 
 | Setting | Value |
 |---|---|
@@ -230,8 +240,12 @@ Lower `ncd` = more similar to known malware. `match` is the closest reference ch
 | Reference set | Every distinct reference chunk except compiled module stubs, which are dropped with `-b 1` |
 | Package score | Most suspicious file/chunk (minimum NCD), leaving out JavaScript chunks under 256 bytes and marking them `ignored` |
 | Install-script threshold | 0.45 with `-t`, against 0.19 for JavaScript and other files |
+| v4 views | Raw plus normalised JavaScript (comments/whitespace removed, identifiers `I`, strings `S`, numbers `N`, base64/hex decoded); package score is the lower view |
+| v4 chunking | Fixed 8 KB windows for the raw view, content-defined 2/8/16 KiB boundaries for the normalised view (`-c 2`) |
 | Stage 1 threshold | Tuned for ~99% malware recall on validation data |
 | Stage 2 model | ModernBERT-base, fine-tuned, 8-bit quantized ONNX |
+
+On the v4 mangling benchmark, `-c 2 -n 1 -e 1` raises overall known-family recall from **9.8% to 64.8% at 0.19**, and from 28.7% to **75.2% at 0.30**, while raising benign false alarms from 0% to 2.6% at 0.19. The per-tier table and the CDC ablation are in [`experiments/v4/`](experiments/v4/README.md).
 
 ## Datasets
 
@@ -249,9 +263,10 @@ Benign packages are downloaded from the public npm registry. Near-duplicates are
 - **Metrics:** precision, recall, F1, false alarm rate, processing time, memory use
 - **Baseline:** GuardDog, evaluated on the same test data
 - **Experiments:** compressor (xz vs. zstd vs. PPMd), chunk size (4 / 8 / 16 KB), with vs. without the AI filter
+- **v4:** known malware renamed and mangled through T1–T4 transformations, scored against the v1 reference set; see [`experiments/v4/`](experiments/v4/README.md)
 - **Live test:** 30-day scan of newly published npm packages, confirmed via npm security takedowns and OpenSSF reports
 
-The first stage 1 measurements, on 195 small packages, are in [`experiments/v1/`](experiments/v1/README.md): known malware and renamed clones are flagged with no benign false alarm, but malware from an unseen family mostly is not, which is the job of stage 2.
+The first stage 1 measurements, on 195 small packages, are in [`experiments/v1/`](experiments/v1/README.md): known malware and renamed clones are flagged with no benign false alarm, but malware from an unseen family mostly is not, which is the job of stage 2. The v4 benchmark adds the missing renamed/mangled measurement: `-c 2 -n 1 -e 1` raises overall known-family recall from 9.8% to 64.8% at 0.19 and from 28.7% to 75.2% at 0.30, with benign false alarms at 2.6% and 3.4%.
 
 ## ⚠️ Safety
 
