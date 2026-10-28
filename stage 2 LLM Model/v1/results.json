@@ -1,0 +1,75 @@
+{
+  "version": "v1",
+  "date": "2026-10-28",
+  "model": "answerdotai/ModernBERT-base",
+  "max_seq_length": 8192,
+  "hardware": {
+    "gpu": "NVIDIA Tesla T4",
+    "compute_capability": "7.5",
+    "vram_total_mib": 15360,
+    "vram_peak_mib": 5519,
+    "driver_version": "550.163.01",
+    "cuda_version": "12.4",
+    "precision": "fp16",
+    "attention_backend": "sdpa"
+  },
+  "dataset": {
+    "total_packages": 900,
+    "malicious_packages": 450,
+    "benign_packages": 450,
+    "train_packages": 765,
+    "validation_packages": 135,
+    "malicious_source": "data/v2/malware_js_0.zip .. malware_js_f.zip",
+    "benign_source": "experiments/v3/results/packages.csv (ben_general, ben_scripts) + experiments/v1/results/packages.csv (ben_popular, ben_longtail)",
+    "seed": 42
+  },
+  "training": {
+    "epochs": 3.0,
+    "total_steps": 72,
+    "per_device_train_batch_size": 2,
+    "gradient_accumulation_steps": 16,
+    "effective_batch_size": 32,
+    "learning_rate": 5e-05,
+    "lr_scheduler": "cosine",
+    "train_runtime_seconds": 2647.5348,
+    "train_samples_per_second": 0.867,
+    "train_steps_per_second": 0.027,
+    "train_loss": 4.060579790009393,
+    "log_history": [
+      {
+        "step": 25,
+        "epoch": 1.04,
+        "loss": 9.037,
+        "grad_norm": 244.1293487548828,
+        "learning_rate": 4.071782166477213e-05
+      },
+      {
+        "step": 50,
+        "epoch": 2.08,
+        "loss": 2.473,
+        "grad_norm": 2.2503411769866943,
+        "learning_rate": 1.3182787370285865e-05
+      }
+    ]
+  },
+  "validation_metrics": {
+    "eval_loss": 0.0004025485832244158,
+    "eval_accuracy": 1.0,
+    "eval_precision": 1.0,
+    "eval_recall": 1.0,
+    "eval_f1": 1.0,
+    "eval_false_alarm_rate": 0.0,
+    "eval_runtime_seconds": 34.0293,
+    "eval_samples_per_second": 3.967,
+    "eval_steps_per_second": 0.999
+  },
+  "onnx_export": {
+    "opset_version": 17,
+    "quantization_type": "QUInt8 (MatMul dynamic quantization)",
+    "fp32_size_mb": 571.2,
+    "int8_size_mb": 254.3,
+    "size_reduction_percent": 55.5,
+    "max_logit_diff": 2.3454,
+    "top1_prediction_match": true
+  }
+}
