@@ -70,6 +70,8 @@
     "int8_size_mb": 254.3,
     "size_reduction_percent": 55.5,
     "max_logit_diff": 2.3454,
-    "top1_prediction_match": true
+    "top1_prediction_match": true,
+    "onnx_bundle_download_url": "https://litter.catbox.moe/orrdk4.gz",
+    "pytorch_checkpoint_download_url": "https://litter.catbox.moe/28p1j8.gz"
   }
 }

@@ -38,6 +38,8 @@ Measured on 2026-10-28 on Google Cloud `packguard-t4` (NVIDIA Tesla T4 16 GB VRA
 | **CPU Execution Provider Verification** | **`Top-1 prediction match: True`** (`Max logit diff: 2.3454`) |
 | **Server Checkpoint Path** | `/home/asembarhoush/PackGuard/checkpoints/packguard-modernbert/final` |
 | **Server ONNX Bundle Path** | `/home/asembarhoush/PackGuard/onnx_models/packguard_modernbert_int8.onnx` |
+| **Direct ONNX Download Link (`214 MB`)** | **https://litter.catbox.moe/orrdk4.gz** (see [`MODEL_DOWNLOAD.md`](MODEL_DOWNLOAD.md)) |
+| **Direct PyTorch Download Link (`531 MB`)** | **https://litter.catbox.moe/28p1j8.gz** (see [`MODEL_DOWNLOAD.md`](MODEL_DOWNLOAD.md)) |
 
 ---
 
@@ -65,6 +67,7 @@ Built on 2026-10-28 on the Google Cloud T4 GPU server (`packguard-t4`) using `pr
 | [`export_onnx.py`](export_onnx.py) | Exports the fine-tuned ModernBERT checkpoint to FP32 ONNX (opset 17, dynamic batch & sequence length) and applies 8-bit dynamic weight quantization (`QUInt8` on `MatMul`). |
 | [`requirements.txt`](requirements.txt) | Python dependencies (`torch==2.6.0+cu124`, `transformers>=4.48.0`, `datasets`, `accelerate`, `evaluate`, `scikit-learn`, `onnx`, `onnxruntime`, `optimum`). |
 | [`results.json`](results.json) | Machine-readable JSON summary of the Stage 2 v1 training run, validation metrics, dataset counts, and ONNX quantization stats. |
+| [`MODEL_DOWNLOAD.md`](MODEL_DOWNLOAD.md) | Direct download links and extraction commands for the 8-bit ONNX bundle and PyTorch checkpoint. |
 | [`SETUP_CHECKLIST.md`](SETUP_CHECKLIST.md) | Full record of the Google Cloud T4 GPU server setup, IAP SSH tunnel configuration, and environment fixes. |
 
 ---
