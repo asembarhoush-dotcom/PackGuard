@@ -1,0 +1,172 @@
+{
+ "params": {
+  "t": 0.7,
+  "s": 0.5,
+  "u": 0.65,
+  "us": 0.65,
+  "L": 0,
+  "g": 0.1,
+  "G": 0.07
+ },
+ "summary": {
+  "T1": 0.975,
+  "FPR_T1": 0.017241379310344827,
+  "T2": 0.9416666666666667,
+  "FPR_T2": 0.017241379310344827,
+  "T3": 0.9416666666666667,
+  "FPR_T3": 0.0,
+  "T4": 0.9666666666666667,
+  "FPR_T4": 0.017241379310344827,
+  "FPR": 0.01293103448275862
+ },
+ "table": [
+  {
+   "tier": "T1",
+   "category": "ben_longtail",
+   "flagged": 0,
+   "total": 17
+  },
+  {
+   "tier": "T1",
+   "category": "ben_popular",
+   "flagged": 1,
+   "total": 41
+  },
+  {
+   "tier": "T1",
+   "category": "mal_known",
+   "flagged": 50,
+   "total": 50
+  },
+  {
+   "tier": "T1",
+   "category": "mal_newname",
+   "flagged": 34,
+   "total": 35
+  },
+  {
+   "tier": "T1",
+   "category": "mal_newver",
+   "flagged": 33,
+   "total": 35
+  },
+  {
+   "tier": "T2",
+   "category": "ben_longtail",
+   "flagged": 0,
+   "total": 17
+  },
+  {
+   "tier": "T2",
+   "category": "ben_popular",
+   "flagged": 1,
+   "total": 41
+  },
+  {
+   "tier": "T2",
+   "category": "mal_known",
+   "flagged": 49,
+   "total": 50
+  },
+  {
+   "tier": "T2",
+   "category": "mal_newname",
+   "flagged": 33,
+   "total": 35
+  },
+  {
+   "tier": "T2",
+   "category": "mal_newver",
+   "flagged": 31,
+   "total": 35
+  },
+  {
+   "tier": "T3",
+   "category": "ben_longtail",
+   "flagged": 0,
+   "total": 17
+  },
+  {
+   "tier": "T3",
+   "category": "ben_popular",
+   "flagged": 0,
+   "total": 41
+  },
+  {
+   "tier": "T3",
+   "category": "mal_known",
+   "flagged": 49,
+   "total": 50
+  },
+  {
+   "tier": "T3",
+   "category": "mal_newname",
+   "flagged": 33,
+   "total": 35
+  },
+  {
+   "tier": "T3",
+   "category": "mal_newver",
+   "flagged": 31,
+   "total": 35
+  },
+  {
+   "tier": "T4",
+   "category": "ben_longtail",
+   "flagged": 1,
+   "total": 17
+  },
+  {
+   "tier": "T4",
+   "category": "ben_popular",
+   "flagged": 0,
+   "total": 41
+  },
+  {
+   "tier": "T4",
+   "category": "mal_known",
+   "flagged": 49,
+   "total": 50
+  },
+  {
+   "tier": "T4",
+   "category": "mal_newname",
+   "flagged": 35,
+   "total": 35
+  },
+  {
+   "tier": "T4",
+   "category": "mal_newver",
+   "flagged": 32,
+   "total": 35
+  }
+ ],
+ "missed": [
+  "T1/mal_newname/nemo-jaws@99.99.9",
+  "T1/mal_newver/fadlsjf@1.0.4",
+  "T1/mal_newver/ftm-noderpc@1.0.8",
+  "T2/mal_known/phantom-module@100.0.0",
+  "T2/mal_newname/mender-binary-delta@1.7.0",
+  "T2/mal_newname/nemo-jaws@99.99.9",
+  "T2/mal_newver/fadlsjf@1.0.4",
+  "T2/mal_newver/ftm-noderpc@1.0.8",
+  "T2/mal_newver/ngsma-commons@1.0.0",
+  "T2/mal_newver/react-dropzone-truffle@100.19.5",
+  "T3/mal_known/my-rei-browser-shim@1.0.0",
+  "T3/mal_newname/mender-binary-delta@1.7.0",
+  "T3/mal_newname/nemo-jaws@99.99.9",
+  "T3/mal_newver/fadlsjf@1.0.4",
+  "T3/mal_newver/ftm-noderpc@1.0.8",
+  "T3/mal_newver/ngsma-commons@1.0.0",
+  "T3/mal_newver/react-dropzone-truffle@100.19.5",
+  "T4/mal_known/my-rei-browser-shim@1.0.0",
+  "T4/mal_newver/fadlsjf@1.0.4",
+  "T4/mal_newver/ftm-noderpc@1.0.8",
+  "T4/mal_newver/react-dropzone-truffle@100.19.5"
+ ],
+ "false_alarms": [
+  "T1/ben_popular/mime-db@1.54.0",
+  "T2/ben_popular/mime-db@1.54.0",
+  "T4/ben_longtail/ethiopic-date@1.0.4"
+ ]
+}

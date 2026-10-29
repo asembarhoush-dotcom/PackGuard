@@ -143,6 +143,45 @@ Built 2026-10-25 to choose the v2 ratio and to measure install scripts. Results:
 | `ben_general` | 400 packages from the `npm-high-impact` 1.13.0 list (none in DataDog `malicious_intent`, latest version not deprecated and not a DataDog `compromised_lib` version), at most 64 KiB of JavaScript, with their `package.json`. 203 were too big and 58 had no JavaScript. |
 | `ben_scripts` | 64 of 5,612 probed popular packages whose latest version has install scripts (`package.json` only) |
 
+## v6 raw benign npm corpus
+
+Downloaded 2026-10-29 by `experiments/v6/scripts/fetch_benign_corpus.py`. This is the raw input; everything below is filtered from it.
+
+| | |
+|---|---|
+| Location | WSL only: `~/packguard-data/raw/npm/tarballs/<name>@<version>.tgz`, the registry tarballs unchanged (857 MiB). `~/packguard-data/raw/npm/index.json` records name, version, tarball URL, unpacked size and source per tarball; `~/packguard-data/raw/npm/search/` caches the npm search pages. Not committed. |
+| Size | 6,014 tarballs: 3,556 `popular`, 2,458 `longtail` |
+| `popular` | Random latest versions from the `npm-high-impact` 1.13.0 list (seed 20261029), not deprecated |
+| `longtail` | npm search results (two pages of 250) for generic keywords, at most 2,000 downloads a month, not deprecated or flagged insecure. The script lists 167 keywords (the 42 v1 long-tail keywords plus 125 more); 85 returned results, the rest were refused by the registry's search rate limit |
+| Excluded | Every package name in DataDog `malicious_intent`, the v1 detailed-test benign set and the v2 benign set (13,380 names), so no test package can enter the references. Tarballs with an unpacked size over 8 MiB were skipped. |
+
+Raw tarballs are kept so the filter can be changed and rerun without downloading again (`build_benign.py` takes about 25 s).
+
+## v6 benign reference set
+
+| | |
+|---|---|
+| Location | WSL only: `~/packguard-data/v6/benign_refs/<name>@<version>/<path with / as __>`; manifest in `~/packguard-data/v6/benign_refs_manifest.json` (a copy is in `experiments/v6/results/`). Not committed. |
+| Built | 2026-10-29 by `experiments/v6/scripts/build_benign.py` from the raw corpus, after the validation packages below were set aside |
+| Size | 5,211 packages (3,130 popular, 2,081 long-tail), 67,703 files, 171 MB of JavaScript; the scanner keeps 76,909 distinct raw chunks and 50,211 distinct normalised chunks |
+| Filter | `.js`, `.cjs`, `.mjs` outside `node_modules`; files of 64 KiB or less, smallest first, at most 128 KiB per package; files identical to one already kept (whitespace ignored) are dropped (7,444); 546 packages had no JavaScript |
+| Use | `packguard -B <dir>`: a chunk only counts when it is closer to malware than to this set by the margin |
+
+## v6 validation set
+
+Built 2026-10-29 to tune the v6 rule without touching the v4 benchmark (the test set). Same design as the v4 benchmark, different packages.
+
+| | |
+|---|---|
+| Location | WSL only: sources in `~/pg-v6/val/source/<category>/`, transformed targets in `~/pg-v6/val/targets/<tier>/<category>/`, scan links in `~/pg-v6/val/scan/`. Not committed (live malware). |
+| `mal_known` | 50 random v1 packages of 32 KiB or less whose name is not in the v4 test set (seed 20261029) |
+| `mal_newver` | 35 DataDog versions dropped by the v1 version cap, for names at the cap and not in the v4 test set; zip of 200 KB or less, 32 KiB of JavaScript or less |
+| `mal_newname` | 35 DataDog packages whose name is in neither v1 nor the v4 test set; same size limits |
+| `ben_popular` | 60 popular packages from the raw corpus, at most 32 KiB of JavaScript, not in the benign references |
+| `ben_longtail` | 60 long-tail packages from the raw corpus, last published by 2024-06-30, at most 32 KiB of JavaScript, not in the benign references |
+| Transforms | `experiments/v4/scripts/mangle.py --seed 20261030`: T1–T4 as in v4, 960 targets (480 malware variants, 480 benign controls) |
+| Scripts | `select_val_malware.py` (decrypts DataDog zips in memory, writes read-only files), `build_benign.py` |
+
 ## Not yet collected
 
 - DataDog `compromised_lib` samples: real libraries with injected code, need a diff against the clean version.
@@ -150,4 +189,4 @@ Built 2026-10-25 to choose the v2 ratio and to measure install scripts. Results:
 - Backstabber's Knife Collection and MalwareBench: access on request.
 - MalOSS: the repository has package-name lists only; samples come from the authors.
 - OpenSSF malicious-packages: reports only, used to confirm live-scan detections.
-- A large benign set from the npm registry, including packages over 32 KiB. The 75 benign packages in the v1 detailed test are only enough to estimate false alarms roughly.
+- A larger benign test set, including packages over 32 KiB. The v6 raw corpus (6,014 packages) now feeds the benign references and validation, but the v4 benchmark still has only 58 benign packages per tier, so its false-alarm rate is a rough estimate.

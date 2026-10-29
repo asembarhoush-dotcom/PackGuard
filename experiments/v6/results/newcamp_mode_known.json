@@ -1,0 +1,40 @@
+{
+ "summary": {
+  "ALL/ben": {
+   "flagged": 11,
+   "total": 464,
+   "rate": 0.023706896551724137
+  },
+  "ALL/ben_general": {
+   "flagged": 11,
+   "total": 400,
+   "rate": 0.0275
+  },
+  "ALL/ben_scripts": {
+   "flagged": 0,
+   "total": 64,
+   "rate": 0.0
+  },
+  "ALL/mal": {
+   "flagged": 250,
+   "total": 500,
+   "rate": 0.5
+  },
+  "ALL/mal_shape": {
+   "flagged": 154,
+   "total": 300,
+   "rate": 0.5133333333333333
+  },
+  "ALL/mal_stream": {
+   "flagged": 96,
+   "total": 200,
+   "rate": 0.48
+  }
+ },
+ "run": {
+  "wall_seconds": 685.95,
+  "peak_mib": 2269.43359375,
+  "load_seconds": 75.6,
+  "scan_seconds_sum": 2396.4937000000023
+ }
+}

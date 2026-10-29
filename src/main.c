@@ -22,17 +22,24 @@ typedef struct {
     size_t nthreads;
     size_t near_k;
     size_t candidates;
+    long benign_candidates;
     size_t min_js_bytes;
     int drop_boilerplate;
     int use_cdc;
     int normalised;
     int decode;
+    int collapse;
     int primitives;
+    int known_mode;
     double threshold;
     double script_threshold;
+    double norm_threshold;
+    double margin;
+    double norm_margin;
     const char *out_file;
     const char *out_dir;
     const char *ref_dir;
+    const char *benign_dir;
     char **packages;
     size_t package_count;
 } options;
@@ -42,15 +49,20 @@ static void usage(void)
 {
     fprintf(stderr,
             "usage: packguard [--mode known|new] [-j threads] [-p candidates] [-m bytes]\n"
-            "                 [-b 0|1] [-c 0|1|2] [-n 0|1] [-e 0|1] [-t threshold]\n"
-            "                 [-s script_threshold] [-k groups]\n"
+            "                 [-b 0|1] [-c 0|1|2] [-n 0|1] [-e 0|1|2] [-x 0|1]\n"
+            "                 [-t threshold] [-s script_threshold] [-u norm_threshold]\n"
+            "                 [-B benign_dir] [-q candidates] [-g margin] [-G norm_margin]\n"
+            "                 [-k groups]\n"
             "                 [-o report.json | -d report_dir]\n"
             "                 <reference_dir> <package_path>...\n"
             "  Scores every .js/.cjs/.mjs file and the root package.json install scripts\n"
             "  of each package_path against every file of reference_dir by NCD. The\n"
             "  references are loaded once for all packages.\n"
-            "  --mode known  the proven v4c2 views and chunking; JavaScript threshold\n"
-            "                0.62, install-script threshold 0.50\n"
+            "  --mode known  v6: raw + normalised views, CDC on the normalised view,\n"
+            "                payload files (-e 2), repeat collapsing (-x 1); thresholds\n"
+            "                0.70 raw, 0.65 normalised, 0.50 install scripts; with -B,\n"
+            "                benign margins 0.10 raw and 0.07 normalised, benign\n"
+            "                prefilter -q 64. Options after --mode override it.\n"
             "  --mode new    raw NCD plus behavioural primitives, no normalised view;\n"
             "                threshold 0.50\n"
             "  -j  worker threads (default: all logical processors)\n"
@@ -63,6 +75,17 @@ static void usage(void)
             "  -t  also report each chunk's threshold and flagged state, and whether\n"
             "      any non-ignored chunk is at or below its threshold\n"
             "  -s  with -t, the threshold for install-script chunks (default 0.45)\n"
+            "  -u  with -t, the threshold for normalised-view chunks (default: -t)\n"
+            "  -e  decode base64/hex payloads: 0 off, 1 inline in the normalised view,\n"
+            "      2 as payload files of their own in both views (default 1)\n"
+            "  -x  drop blocks repeated 3 or more times from the normalised view\n"
+            "      (default 0)\n"
+            "  -B  benign reference directory: a chunk only counts when it is closer\n"
+            "      to malware than to any benign reference by the margin\n"
+            "  -q  with -B, LZJD prefilter candidates for the benign references\n"
+            "      (default: -p)\n"
+            "  -g  with -B, the margin for raw chunks (default 0)\n"
+            "  -G  with -B, the margin for normalised-view chunks (default 0)\n"
             "  -k  also list, per chunk, the closest reference groups (first folder\n"
             "      below reference_dir) and their lowest NCD, up to this many\n"
             "  -o  write the report of a single package to this file (default: stdout)\n"
@@ -80,7 +103,7 @@ static int parse_args(int argc, char **argv, options *opt)
     *opt = (options){.nthreads = cpu_count(), .candidates = DEFAULT_CANDIDATES,
                      .min_js_bytes = 256, .drop_boilerplate = 1, .use_cdc = 0,
                      .normalised = 0, .decode = 1, .primitives = 0, .threshold = -1.0,
-                     .script_threshold = 0.45};
+                     .script_threshold = 0.45, .norm_threshold = -1.0, .benign_candidates = -1};
     int i = 1;
     for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
         const char *a = argv[i];
@@ -99,11 +122,17 @@ static int parse_args(int argc, char **argv, options *opt)
             if (strcmp(mode, "known") == 0) {
                 opt->use_cdc = 2;
                 opt->normalised = 1;
-                opt->decode = 1;
+                opt->decode = 2;
+                opt->collapse = 1;
                 opt->drop_boilerplate = 1;
                 opt->primitives = 0;
-                opt->threshold = 0.62;
+                opt->threshold = 0.70;
+                opt->norm_threshold = 0.65;
                 opt->script_threshold = 0.50;
+                opt->margin = 0.10;
+                opt->norm_margin = 0.07;
+                opt->benign_candidates = 64;
+                opt->known_mode = 1;
             } else if (strcmp(mode, "new") == 0) {
                 opt->use_cdc = 0;
                 opt->normalised = 0;
@@ -118,7 +147,7 @@ static int parse_args(int argc, char **argv, options *opt)
             }
             continue;
         }
-        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkpmbscne", a[1]) == NULL) {
+        if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkpqmbscneBuxgG", a[1]) == NULL) {
             fprintf(stderr, "packguard: bad option %s\n", a);
             return -1;
         }
@@ -138,13 +167,16 @@ static int parse_args(int argc, char **argv, options *opt)
                 return -1;
             }
             opt->near_k = (size_t)n;
-        } else if (a[1] == 'p') {
+        } else if (a[1] == 'p' || a[1] == 'q') {
             long n = strtol(value, &end, 10);
             if (*end != '\0' || n < 0 || n > MAX_CANDIDATES) {
-                fprintf(stderr, "packguard: -p needs 0 to %d\n", MAX_CANDIDATES);
+                fprintf(stderr, "packguard: -%c needs 0 to %d\n", a[1], MAX_CANDIDATES);
                 return -1;
             }
-            opt->candidates = (size_t)n;
+            if (a[1] == 'p')
+                opt->candidates = (size_t)n;
+            else
+                opt->benign_candidates = (long)n;
         } else if (a[1] == 'm') {
             long n = strtol(value, &end, 10);
             if (*end != '\0' || n < 0 || n > (long)SPLIT_THRESHOLD) {
@@ -166,7 +198,7 @@ static int parse_args(int argc, char **argv, options *opt)
                 return -1;
             }
             opt->use_cdc = (int)n;
-        } else if (a[1] == 'n' || a[1] == 'e') {
+        } else if (a[1] == 'n' || a[1] == 'x') {
             long n = strtol(value, &end, 10);
             if (*end != '\0' || (n != 0 && n != 1)) {
                 fprintf(stderr, "packguard: -%c needs 0 or 1\n", a[1]);
@@ -175,7 +207,28 @@ static int parse_args(int argc, char **argv, options *opt)
             if (a[1] == 'n')
                 opt->normalised = (int)n;
             else
-                opt->decode = (int)n;
+                opt->collapse = (int)n;
+        } else if (a[1] == 'e') {
+            long n = strtol(value, &end, 10);
+            if (*end != '\0' || n < 0 || n > 2) {
+                fprintf(stderr, "packguard: -e needs 0, 1 or 2\n");
+                return -1;
+            }
+            opt->decode = (int)n;
+        } else if (a[1] == 'u' || a[1] == 'g' || a[1] == 'G') {
+            double x = strtod(value, &end);
+            if (*end != '\0' || x < 0.0) {
+                fprintf(stderr, "packguard: -%c needs a number of 0 or more\n", a[1]);
+                return -1;
+            }
+            if (a[1] == 'u')
+                opt->norm_threshold = x;
+            else if (a[1] == 'g')
+                opt->margin = x;
+            else
+                opt->norm_margin = x;
+        } else if (a[1] == 'B') {
+            opt->benign_dir = value;
         } else if (a[1] == 't') {
             opt->threshold = strtod(value, &end);
             if (*end != '\0' || opt->threshold < 0.0) {
@@ -196,6 +249,8 @@ static int parse_args(int argc, char **argv, options *opt)
     }
     if (argc - i < 2)
         return -1;
+    if (opt->norm_threshold < 0.0)
+        opt->norm_threshold = opt->threshold;
     opt->ref_dir = argv[i];
     opt->packages = argv + i + 1;
     opt->package_count = (size_t)(argc - i - 1);
@@ -348,6 +403,35 @@ typedef struct {
     int loaded;
 } package_job;
 
+/* The loaded reference sets: malware raw and normalised, and the benign ones when -B is given. */
+typedef struct {
+    reference_set *refs;
+    reference_set *norm_refs;
+    reference_set *ben_refs;
+    reference_set *ben_norm_refs;
+} reference_views;
+
+/* The benign reference sets and one package's chunk scores against them, raw and normalised. */
+typedef struct {
+    const reference_set *refs;
+    const reference_set *norm_refs;
+    const chunk_score *scores;
+    const chunk_score *norm_scores;
+} benign_scores;
+
+/* Returns how the raw view reads files: fixed or CDC chunks, with payload files when -e 2. */
+static view_options raw_view_options(const options *opt)
+{
+    return (view_options){.use_cdc = opt->use_cdc == 1, .decode = opt->decode == 2 ? 2 : 0};
+}
+
+/* Returns how the normalised view reads files, as -c, -e and -x ask. */
+static view_options norm_view_options(const options *opt)
+{
+    return (view_options){.use_cdc = opt->use_cdc >= 1, .normalise = 1, .decode = opt->decode,
+                          .collapse = opt->collapse};
+}
+
 /* Returns the report name of one file kind. */
 static const char *kind_report_name(file_kind kind)
 {
@@ -383,28 +467,48 @@ static primitive_hits package_primitive_hits(const package_job *job, primitive_h
 }
 
 /*
+ * Returns 1 when a chunk at malware distance ncd is within limit and, when
+ * benign references were scored (has_benign), closer to malware than to the
+ * nearest benign reference (benign) by more than margin; otherwise 0.
+ */
+static int chunk_flagged(double ncd, double limit, int has_benign, double benign, double margin)
+{
+    if (limit < 0.0 || ncd > limit)
+        return 0;
+    return !has_benign || ncd + margin < benign;
+}
+
+/*
  * Builds the report of a scored package and writes it to
  * opt->out_dir/<package folder>.json, to opt->out_file, or to stdout.
  * scores, and nears and near_counts when k > 0, hold the package's own
- * chunks in walk order. JavaScript chunks shorter than opt->min_js_bytes are
- * marked ignored and left out of the package score; when a package has no
- * other chunk, its largest JavaScript chunk sets the score and the report is
- * marked low_confidence. Progress goes to stderr.
+ * chunks in walk order; norm_scores its normalised chunks. With benign
+ * references, ben holds both views' benign scores for the same chunks, and a
+ * JavaScript or normalised chunk only counts as flagged when it is closer to
+ * malware than to benign code by the margin (see chunk_flagged()); install
+ * scripts are judged on their malware distance alone. JavaScript chunks
+ * shorter than opt->min_js_bytes are marked ignored and left out of the
+ * package score; when a package has no other chunk, its largest JavaScript
+ * chunk sets the score and the report is marked low_confidence. Progress goes
+ * to stderr.
  * Returns 0 on success, -1 on failure.
  */
 static int write_package(const reference_set *refs, const reference_set *norm_refs,
                          const options *opt, const package_job *job,
                          const chunk_score *scores, const chunk_score *norm_scores,
+                         const benign_scores *ben,
                          report_near *nears, const size_t *near_counts, size_t k)
 {
     int status = -1;
     size_t count = job->count;
+    size_t norm_count = norm_scores != NULL ? job->norm_count : 0;
     const char *pkg = job->path;
     char *out_path = NULL;
     report_chunk *rows = malloc((count ? count : 1) * sizeof *rows);
     report_match *matched = malloc((count ? count : 1) * sizeof *matched);
     chunk_score *used = malloc((count ? count : 1) * sizeof *used);
-    if (rows == NULL || matched == NULL || used == NULL)
+    report_view_chunk *norm_rows = malloc((norm_count ? norm_count : 1) * sizeof *norm_rows);
+    if (rows == NULL || matched == NULL || used == NULL || norm_rows == NULL)
         goto done;
     if (opt->out_dir != NULL) {
         size_t blen;
@@ -431,9 +535,11 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
         primitives_hits_string(all_hits, primitive_hits_text, sizeof primitive_hits_text);
     }
     size_t ignored = 0;
+    size_t vetoed = 0;
     size_t fallback = SIZE_MAX;
     size_t fallback_len = 0;
     size_t s = 0;
+    int has_threshold = opt->threshold >= 0.0;
     for (size_t i = 0; i < job->targets.count; i++) {
         const loaded_file *target = &job->targets.items[i];
         const char *file = relative_to(target->path, pkg);
@@ -442,8 +548,13 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
             const file_chunk *c = &target->chunks.chunks[j];
             const ref_chunk *m = &refs->refs[scores[s].ref];
             int skip = target->kind == FILE_JS && c->length < opt->min_js_bytes;
-            int has_threshold = opt->threshold >= 0.0;
             double limit = target->kind == FILE_INSTALL_SCRIPT ? opt->script_threshold : opt->threshold;
+            int judged_benign = ben != NULL && target->kind != FILE_INSTALL_SCRIPT;
+            double bncd = ben != NULL ? ben->scores[s].ncd : DBL_MAX;
+            int flag = has_threshold && chunk_flagged(scores[s].ncd, limit, judged_benign, bncd, opt->margin);
+            if (!skip && has_threshold && !flag && scores[s].ncd <= limit)
+                vetoed++;
+            const ref_chunk *bm = ben != NULL ? &ben->refs->refs[ben->scores[s].ref] : NULL;
             rows[s] = (report_chunk){
                 .file = file,
                 .kind = kind,
@@ -451,13 +562,16 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
                 .ncd = scores[s].ncd,
                 .threshold = limit,
                 .has_threshold = has_threshold,
-                .flagged = has_threshold && scores[s].ncd <= limit,
+                .flagged = flag,
                 .match_file = relative_to(refs->files.items[m->file].path, opt->ref_dir),
                 .match_package = refs->package_names[refs->file_package[m->file]],
                 .match_start = m->chunk->offset,
                 .text = c->data,
                 .text_len = c->length,
                 .ignored = skip,
+                .benign_ncd = bncd,
+                .has_benign = ben != NULL,
+                .benign_match = bm ? relative_to(ben->refs->files.items[bm->file].path, opt->benign_dir) : NULL,
             };
             if (k > 0) {
                 rows[s].near = nears + s * k;
@@ -486,10 +600,40 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
 
     double best_norm = DBL_MAX;
     size_t norm_best = SIZE_MAX;
-    for (size_t i = 0; norm_scores != NULL && i < job->norm_count; i++) {
-        if (norm_scores[i].ncd < best_norm) {
-            best_norm = norm_scores[i].ncd;
-            norm_best = i;
+    int norm_flagged = 0;
+    size_t ns = 0;
+    for (size_t i = 0; i < job->norm_targets.count && ns < norm_count; i++) {
+        const loaded_file *target = &job->norm_targets.items[i];
+        const char *file = relative_to(target->path, pkg);
+        for (size_t j = 0; j < target->chunks.count && ns < norm_count; j++, ns++) {
+            const file_chunk *c = &target->chunks.chunks[j];
+            const ref_chunk *m = &norm_refs->refs[norm_scores[ns].ref];
+            double bncd = ben != NULL ? ben->norm_scores[ns].ncd : DBL_MAX;
+            int flag = has_threshold
+                       && chunk_flagged(norm_scores[ns].ncd, opt->norm_threshold, ben != NULL, bncd,
+                                        opt->norm_margin);
+            if (has_threshold && !flag && norm_scores[ns].ncd <= opt->norm_threshold)
+                vetoed++;
+            norm_flagged |= flag;
+            const ref_chunk *bm = ben != NULL ? &ben->norm_refs->refs[ben->norm_scores[ns].ref] : NULL;
+            norm_rows[ns] = (report_view_chunk){
+                .file = file,
+                .start = c->offset,
+                .length = c->length,
+                .ncd = norm_scores[ns].ncd,
+                .match_file = relative_to(norm_refs->files.items[m->file].path, opt->ref_dir),
+                .benign_ncd = bncd,
+                .has_benign = ben != NULL,
+                .benign_match = bm ? relative_to(ben->norm_refs->files.items[bm->file].path, opt->benign_dir)
+                                   : NULL,
+                .threshold = opt->norm_threshold,
+                .has_threshold = has_threshold,
+                .flagged = flag,
+            };
+            if (norm_scores[ns].ncd < best_norm) {
+                best_norm = norm_scores[ns].ncd;
+                norm_best = ns;
+            }
         }
     }
     if (best_norm < best_raw)
@@ -506,7 +650,7 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
     for (size_t i = 0; i < count; i++)
         if (!rows[i].ignored && rows[i].flagged)
             flagged = 1;
-    if (opt->threshold >= 0.0 && best_norm <= opt->threshold)
+    if (norm_flagged)
         flagged = 1;
     if (primitive_flagged)
         flagged = 1;
@@ -542,12 +686,16 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
         .has_primitive = opt->primitives,
         .primitive_flagged = primitive_flagged,
         .primitive_hits = opt->primitives ? primitive_hits_text : NULL,
+        .has_benign = ben != NULL,
+        .benign_vetoed = vetoed,
         .seconds = job->seconds,
         .has_seconds = 1,
         .matched = matched,
         .matched_count = matched_count,
         .chunks = rows,
         .count = count,
+        .norm_chunks = norm_scores != NULL ? norm_rows : NULL,
+        .norm_count = norm_count,
     };
     const char *dest = out_path ? out_path : opt->out_file;
     if (dest != NULL) {
@@ -577,11 +725,28 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
     status = 0;
 
 done:
+    free(norm_rows);
     free(used);
     free(out_path);
     free(matched);
     free(rows);
     return status;
+}
+
+/*
+ * Scores chunks[0..count) against set into out, timing each in seconds, and
+ * prints what failed. Returns 0 on success, -1 on failure.
+ */
+static int score_against(reference_set *set, const file_chunk **chunks, size_t count, chunk_score *out,
+                      double *seconds, const char *what)
+{
+    if (count == 0)
+        return 0;
+    if (score_chunks(set, chunks, count, out, NULL, seconds) != 0) {
+        fprintf(stderr, "packguard: scoring the %s failed\n", what);
+        return -1;
+    }
+    return 0;
 }
 
 /*
@@ -593,23 +758,31 @@ done:
  * seconds are its load time plus the scoring time of its chunks.
  * Returns the number of packages that failed.
  */
-static int scan_batch(reference_set *refs, reference_set *norm_refs, const options *opt,
-                      char **packages, size_t n)
+static int scan_batch(const reference_views *views, const options *opt, char **packages, size_t n)
 {
     int failures = 0;
+    reference_set *refs = views->refs;
+    reference_set *norm_refs = views->norm_refs;
     size_t k = opt->near_k < refs->group_count ? opt->near_k : refs->group_count;
     package_job *jobs = calloc(n, sizeof *jobs);
     const file_chunk **chunks = NULL;
     const file_chunk **norm_chunks = NULL;
     chunk_score *scores = NULL;
     chunk_score *norm_scores = NULL;
+    chunk_score *ben_scores = NULL;
+    chunk_score *ben_norm_scores = NULL;
     double *seconds = NULL;
     double *norm_seconds = NULL;
+    double *ben_seconds = NULL;
+    double *ben_norm_seconds = NULL;
     double *group_rows = NULL;
     report_near *nears = NULL;
     size_t *near_counts = NULL;
     int scored = 0;
     int norm_scored = 0;
+    int has_benign = views->ben_refs != NULL;
+    view_options raw_view = raw_view_options(opt);
+    view_options norm_view = norm_view_options(opt);
     if (jobs == NULL)
         goto report;
 
@@ -618,15 +791,14 @@ static int scan_batch(reference_set *refs, reference_set *norm_refs, const optio
     for (size_t j = 0; j < n; j++) {
         double t0 = now_seconds();
         jobs[j].path = packages[j];
-        if (collect_files_ex(&jobs[j].targets, packages[j], opt->use_cdc == 1, 0, 0) == 0) {
+        if (collect_files_ex(&jobs[j].targets, packages[j], &raw_view) == 0) {
             jobs[j].loaded = 1;
             jobs[j].first = total;
             for (size_t i = 0; i < jobs[j].targets.count; i++)
                 jobs[j].count += jobs[j].targets.items[i].chunks.count;
             total += jobs[j].count;
             if (norm_refs != NULL) {
-                if (collect_files_ex(&jobs[j].norm_targets, packages[j], opt->use_cdc >= 1, 1,
-                                     opt->decode) != 0) {
+                if (collect_files_ex(&jobs[j].norm_targets, packages[j], &norm_view) != 0) {
                     jobs[j].loaded = 0;
                 } else {
                     jobs[j].norm_first = norm_total;
@@ -648,6 +820,12 @@ static int scan_batch(reference_set *refs, reference_set *norm_refs, const optio
         norm_scores = malloc((norm_total ? norm_total : 1) * sizeof *norm_scores);
         norm_seconds = calloc(norm_total ? norm_total : 1, sizeof *norm_seconds);
     }
+    if (has_benign) {
+        ben_scores = malloc((total ? total : 1) * sizeof *ben_scores);
+        ben_seconds = calloc(total ? total : 1, sizeof *ben_seconds);
+        ben_norm_scores = malloc((norm_total ? norm_total : 1) * sizeof *ben_norm_scores);
+        ben_norm_seconds = calloc(norm_total ? norm_total : 1, sizeof *ben_norm_seconds);
+    }
     if (k > 0) {
         group_rows = malloc(slice * refs->group_count * sizeof *group_rows);
         nears = malloc((total ? total : 1) * k * sizeof *nears);
@@ -655,6 +833,8 @@ static int scan_batch(reference_set *refs, reference_set *norm_refs, const optio
     }
     if (chunks == NULL || scores == NULL || seconds == NULL
         || (norm_refs != NULL && (norm_chunks == NULL || norm_scores == NULL || norm_seconds == NULL))
+        || (has_benign && (ben_scores == NULL || ben_seconds == NULL || ben_norm_scores == NULL
+                           || ben_norm_seconds == NULL))
         || (k > 0 && (group_rows == NULL || nears == NULL || near_counts == NULL)))
         goto report;
 
@@ -681,13 +861,17 @@ static int scan_batch(reference_set *refs, reference_set *norm_refs, const optio
             near_counts[at + i] = closest_groups(group_rows + i * refs->group_count, refs->group_names,
                                                  refs->group_count, k, nears + (at + i) * k);
     }
-    norm_scored = 1;
-    if (scored && norm_refs != NULL && norm_total > 0) {
-        if (score_chunks(norm_refs, norm_chunks, norm_total, norm_scores, NULL, norm_seconds) != 0) {
-            fprintf(stderr, "packguard: scoring the normalised view failed\n");
-            norm_scored = 0;
-        }
-    }
+    norm_scored = scored;
+    if (norm_scored && norm_refs != NULL
+        && score_against(norm_refs, norm_chunks, norm_total, norm_scores, norm_seconds, "normalised view") != 0)
+        norm_scored = 0;
+    if (norm_scored && has_benign
+        && score_against(views->ben_refs, chunks, total, ben_scores, ben_seconds, "benign references") != 0)
+        norm_scored = 0;
+    if (norm_scored && has_benign && norm_refs != NULL
+        && score_against(views->ben_norm_refs, norm_chunks, norm_total, ben_norm_scores, ben_norm_seconds,
+                      "normalised benign references") != 0)
+        norm_scored = 0;
 
 report:
     for (size_t j = 0; j < n; j++) {
@@ -697,11 +881,18 @@ report:
             continue;
         }
         for (size_t c = 0; c < jobs[j].count; c++)
-            jobs[j].seconds += seconds[jobs[j].first + c];
+            jobs[j].seconds += seconds[jobs[j].first + c] + (has_benign ? ben_seconds[jobs[j].first + c] : 0.0);
         for (size_t c = 0; norm_refs != NULL && c < jobs[j].norm_count; c++)
-            jobs[j].seconds += norm_seconds[jobs[j].norm_first + c];
+            jobs[j].seconds += norm_seconds[jobs[j].norm_first + c]
+                               + (has_benign ? ben_norm_seconds[jobs[j].norm_first + c] : 0.0);
+        benign_scores ben = {
+            views->ben_refs, views->ben_norm_refs,
+            has_benign ? ben_scores + jobs[j].first : NULL,
+            has_benign && norm_refs != NULL ? ben_norm_scores + jobs[j].norm_first : NULL,
+        };
         if (write_package(refs, norm_refs, opt, &jobs[j], scores + jobs[j].first,
                           norm_refs != NULL ? norm_scores + jobs[j].norm_first : NULL,
+                          has_benign ? &ben : NULL,
                           k > 0 ? nears + jobs[j].first * k : NULL,
                           k > 0 ? near_counts + jobs[j].first : NULL, k) != 0) {
             fprintf(stderr, "packguard: %s: scan failed\n", packages[j]);
@@ -715,6 +906,10 @@ report:
     free(near_counts);
     free(nears);
     free(group_rows);
+    free(ben_norm_seconds);
+    free(ben_norm_scores);
+    free(ben_seconds);
+    free(ben_scores);
     free(norm_seconds);
     free(norm_scores);
     free(norm_chunks);
@@ -747,9 +942,14 @@ int main(int argc, char **argv)
     double t0 = now_seconds();
     reference_set refs;
     reference_set norm_refs;
-    int has_norm = opt.normalised;
+    reference_set ben_refs;
+    reference_set ben_norm_refs;
+    reference_views views = {&refs, NULL, NULL, NULL};
+    view_options raw_view = raw_view_options(&opt);
+    view_options norm_view = norm_view_options(&opt);
+    int failures = 0;
     if (load_references_ex(&refs, opt.ref_dir, opt.nthreads, opt.candidates, opt.drop_boilerplate,
-                           opt.use_cdc == 1, 0, 0, 0) != 0) {
+                           &raw_view, 0) != 0) {
         fprintf(stderr, "packguard: loading references failed\n");
         return 1;
     }
@@ -762,27 +962,57 @@ int main(int argc, char **argv)
     else
         fprintf(stderr, "no prefilter: NCD on every chunk\n");
 
-    if (has_norm) {
+    if (opt.normalised) {
         double t1 = now_seconds();
-        if (load_references_ex(&norm_refs, opt.ref_dir, opt.nthreads, opt.candidates, 0,
-                               opt.use_cdc >= 1, 1, opt.decode, 1) != 0) {
+        if (load_references_ex(&norm_refs, opt.ref_dir, opt.nthreads, opt.candidates, 0, &norm_view, 1) != 0) {
             fprintf(stderr, "packguard: loading normalised references failed\n");
-            free_references(&refs);
-            return 1;
+            failures = -1;
+            goto done;
         }
+        views.norm_refs = &norm_refs;
         fprintf(stderr, "packguard: normalised view: %zu reference files, %zu chunks, %zu distinct, "
                 "%zu packages, loaded in %.1f s\n",
                 norm_refs.files.count, norm_refs.total_chunks, norm_refs.count,
                 norm_refs.package_count, now_seconds() - t1);
     }
-
-    int failures = 0;
-    for (size_t i = 0; i < opt.package_count; i += BATCH_PACKAGES) {
-        size_t n = opt.package_count - i < BATCH_PACKAGES ? opt.package_count - i : BATCH_PACKAGES;
-        failures += scan_batch(&refs, has_norm ? &norm_refs : NULL, &opt, opt.packages + i, n);
+    if (opt.known_mode && opt.benign_dir == NULL)
+        fprintf(stderr, "packguard: warning: --mode known without -B runs without the benign veto, "
+                "so expect many more false alarms\n");
+    if (opt.benign_dir != NULL) {
+        double t1 = now_seconds();
+        size_t ben_candidates = opt.benign_candidates < 0 ? opt.candidates : (size_t)opt.benign_candidates;
+        if (load_references_ex(&ben_refs, opt.benign_dir, opt.nthreads, ben_candidates, 0, &raw_view, 1) != 0) {
+            fprintf(stderr, "packguard: loading benign references failed\n");
+            failures = -1;
+            goto done;
+        }
+        views.ben_refs = &ben_refs;
+        if (opt.normalised) {
+            if (load_references_ex(&ben_norm_refs, opt.benign_dir, opt.nthreads, ben_candidates, 0, &norm_view,
+                                   1) != 0) {
+                fprintf(stderr, "packguard: loading normalised benign references failed\n");
+                failures = -1;
+                goto done;
+            }
+            views.ben_norm_refs = &ben_norm_refs;
+        }
+        fprintf(stderr, "packguard: benign references: %zu files, %zu distinct chunks, %zu normalised, "
+                "%zu packages, loaded in %.1f s\n",
+                ben_refs.files.count, ben_refs.count, views.ben_norm_refs ? ben_norm_refs.count : 0,
+                ben_refs.package_count, now_seconds() - t1);
     }
 
-    if (has_norm)
+    for (size_t i = 0; i < opt.package_count; i += BATCH_PACKAGES) {
+        size_t n = opt.package_count - i < BATCH_PACKAGES ? opt.package_count - i : BATCH_PACKAGES;
+        failures += scan_batch(&views, &opt, opt.packages + i, n);
+    }
+
+done:
+    if (views.ben_norm_refs != NULL)
+        free_references(&ben_norm_refs);
+    if (views.ben_refs != NULL)
+        free_references(&ben_refs);
+    if (views.norm_refs != NULL)
         free_references(&norm_refs);
     free_references(&refs);
     return failures ? 1 : 0;

@@ -120,15 +120,62 @@ static int is_keyword(const unsigned char *s, size_t n)
     return 0;
 }
 
-/* Returns 1 when at least 85% of n bytes are printable ASCII, otherwise 0. */
+/*
+ * Returns the length of the well-formed multi-byte UTF-8 sequence that
+ * starts at s, or 0 when the bytes there are not one (overlong forms,
+ * surrogates and code points above U+10FFFF are rejected).
+ */
+static size_t utf8_multibyte(const unsigned char *s, size_t len)
+{
+    unsigned char c = s[0];
+    size_t need;
+    unsigned char lo = 0x80, hi = 0xBF;
+    if (c >= 0xC2 && c <= 0xDF) {
+        need = 2;
+    } else if (c >= 0xE0 && c <= 0xEF) {
+        need = 3;
+        if (c == 0xE0)
+            lo = 0xA0;
+        else if (c == 0xED)
+            hi = 0x9F;
+    } else if (c >= 0xF0 && c <= 0xF4) {
+        need = 4;
+        if (c == 0xF0)
+            lo = 0x90;
+        else if (c == 0xF4)
+            hi = 0x8F;
+    } else {
+        return 0;
+    }
+    if (len < need || s[1] < lo || s[1] > hi)
+        return 0;
+    for (size_t i = 2; i < need; i++)
+        if (s[i] < 0x80 || s[i] > 0xBF)
+            return 0;
+    return need;
+}
+
+/*
+ * Returns 1 when at least 85% of n bytes are text: printable ASCII, tab,
+ * newline, carriage return or part of a well-formed multi-byte UTF-8
+ * sequence (so code with non-English strings or comments still counts),
+ * otherwise 0. Random binary rarely forms valid UTF-8, so it still fails.
+ */
 static int mostly_printable(const unsigned char *s, size_t n)
 {
     if (n == 0)
         return 0;
     size_t printable = 0;
-    for (size_t i = 0; i < n; i++)
-        if (s[i] == '\t' || s[i] == '\n' || s[i] == '\r' || (s[i] >= 32 && s[i] < 127))
+    for (size_t i = 0; i < n;) {
+        if (s[i] == '\t' || s[i] == '\n' || s[i] == '\r' || (s[i] >= 32 && s[i] < 127)) {
             printable++;
+            i++;
+            continue;
+        }
+        size_t seq = s[i] >= 0x80 ? utf8_multibyte(s + i, n - i) : 0;
+        printable += seq;
+        i += seq ? seq : 1;
+    }
     return printable * 100 >= n * 85;
 }
 
@@ -420,4 +467,194 @@ unsigned char *normalise_js(const unsigned char *data, size_t len, int decode, s
     }
     *out_len = out.len;
     return out.data;
+}
+
+/* Hands the malloc'd payload s of n bytes to list, or frees it when list is full. */
+static void add_payload(payload_list *list, unsigned char *s, size_t n)
+{
+    if (list->count >= PAYLOAD_MAX_COUNT) {
+        free(s);
+        return;
+    }
+    list->data[list->count] = s;
+    list->len[list->count] = n;
+    list->count++;
+}
+
+/*
+ * Adds to list the payloads of data at the given depth: the whole buffer
+ * when it is one encoded payload, otherwise every encoded string literal,
+ * then searches each decoded payload in turn.
+ */
+static void collect_payloads(const unsigned char *data, size_t len, int depth, payload_list *list)
+{
+    if (depth >= PAYLOAD_MAX_DEPTH || list->count >= PAYLOAD_MAX_COUNT)
+        return;
+    size_t first = list->count;
+    size_t start = 0;
+    size_t end = len;
+    while (start < end && is_space(data[start]))
+        start++;
+    while (end > start && is_space(data[end - 1]))
+        end--;
+    unsigned char *decoded = NULL;
+    size_t decoded_len = 0;
+    if (decode_encoded(data + start, end - start, &decoded, &decoded_len)) {
+        add_payload(list, decoded, decoded_len);
+    } else {
+        size_t i = 0;
+        while (i < len && list->count < PAYLOAD_MAX_COUNT) {
+            unsigned char c = data[i];
+            if (c == '/' && i + 1 < len && data[i + 1] == '/') {
+                while (i < len && data[i] != '\n')
+                    i++;
+                continue;
+            }
+            if (c == '/' && i + 1 < len && data[i + 1] == '*') {
+                i += 2;
+                while (i + 1 < len && !(data[i] == '*' && data[i + 1] == '/'))
+                    i++;
+                i = i + 1 < len ? i + 2 : len;
+                continue;
+            }
+            if (c != '\'' && c != '"' && c != '`') {
+                i++;
+                continue;
+            }
+            size_t j = i + 1;
+            while (j < len && data[j] != c) {
+                if (data[j] == '\\')
+                    j++;
+                j++;
+            }
+            size_t content_len = (j < len ? j : len) - (i + 1);
+            if (content_len >= 16 && decode_encoded(data + i + 1, content_len, &decoded, &decoded_len))
+                add_payload(list, decoded, decoded_len);
+            i = j < len ? j + 1 : len;
+        }
+    }
+    size_t last = list->count;
+    for (size_t p = first; p < last; p++)
+        collect_payloads(list->data[p], list->len[p], depth + 1, list);
+}
+
+void find_payloads(const unsigned char *data, size_t len, payload_list *out)
+{
+    *out = (payload_list){0};
+    if (data != NULL && len > 0)
+        collect_payloads(data, len, 0, out);
+}
+
+void free_payloads(payload_list *list)
+{
+    for (size_t i = 0; i < list->count; i++)
+        free(list->data[i]);
+    *list = (payload_list){0};
+}
+
+/* One distinct block of a normalised stream and how often it occurs. */
+typedef struct {
+    uint64_t hash;
+    size_t start;
+    size_t len;
+    size_t count;
+} block_count;
+
+/* Returns the 64-bit FNV-1a hash of len bytes of data. */
+static uint64_t block_hash(const unsigned char *data, size_t len)
+{
+    uint64_t h = UINT64_C(14695981039346656037);
+    for (size_t i = 0; i < len; i++) {
+        h ^= data[i];
+        h *= UINT64_C(1099511628211);
+    }
+    return h;
+}
+
+/*
+ * Returns the slot of the block data[start..start+len) in table (cap slots,
+ * a power of two), inserting it with count 0 when it is new.
+ */
+static block_count *block_slot(block_count *table, size_t cap, const unsigned char *data,
+                               size_t start, size_t len)
+{
+    uint64_t h = block_hash(data + start, len);
+    size_t pos = (size_t)h & (cap - 1);
+    while (table[pos].len != 0) {
+        block_count *b = &table[pos];
+        if (b->hash == h && b->len == len && memcmp(data + b->start, data + start, len) == 0)
+            return b;
+        pos = (pos + 1) & (cap - 1);
+    }
+    table[pos] = (block_count){h, start, len, 0};
+    return &table[pos];
+}
+
+/* Returns 1 when the normalised token "function" starts at data[j], otherwise 0. */
+static int function_token_at(const unsigned char *data, size_t len, size_t j)
+{
+    static const char word[] = "function ";
+    size_t n = sizeof word - 1;
+    return j + n <= len && memcmp(data + j, word, n) == 0 && (j == 0 || !is_ident_char(data[j - 1]));
+}
+
+/*
+ * Returns the length of the block that starts at data[i]: up to and
+ * including the next '}', or up to the next "function" token, or the end.
+ */
+static size_t block_length(const unsigned char *data, size_t len, size_t i)
+{
+    size_t j = i;
+    while (j < len && data[j] != '}' && (j == i || !function_token_at(data, len, j)))
+        j++;
+    return (j < len && data[j] == '}' ? j + 1 : j) - i;
+}
+
+size_t collapse_repeats(unsigned char *data, size_t len)
+{
+    size_t blocks = 0;
+    for (size_t i = 0; i < len; i += block_length(data, len, i))
+        blocks++;
+    size_t cap = 2;
+    while (cap < blocks * 2)
+        cap *= 2;
+    block_count *table = calloc(cap, sizeof *table);
+    unsigned char *keep = malloc(blocks ? blocks : 1);
+    if (table == NULL || keep == NULL) {
+        free(table);
+        free(keep);
+        return len;
+    }
+    for (size_t i = 0; i < len;) {
+        size_t n = block_length(data, len, i);
+        if (n >= COLLAPSE_MIN_BYTES)
+            block_slot(table, cap, data, i, n)->count++;
+        i += n;
+    }
+    size_t kept = 0;
+    size_t b = 0;
+    for (size_t i = 0; i < len; b++) {
+        size_t n = block_length(data, len, i);
+        keep[b] = n < COLLAPSE_MIN_BYTES || block_slot(table, cap, data, i, n)->count < COLLAPSE_MIN_COUNT;
+        if (keep[b])
+            kept += n;
+        i += n;
+    }
+    free(table);
+    if (kept == 0 || kept == len) {
+        free(keep);
+        return len;
+    }
+    size_t out = 0;
+    b = 0;
+    for (size_t i = 0; i < len; b++) {
+        size_t n = block_length(data, len, i);
+        if (keep[b]) {
+            memmove(data + out, data + i, n);
+            out += n;
+        }
+        i += n;
+    }
+    free(keep);
+    return out;
 }

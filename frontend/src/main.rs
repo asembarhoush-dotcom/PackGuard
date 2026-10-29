@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 struct Options {
     mode: String,
     refs: Option<PathBuf>,
+    benign: Option<PathBuf>,
     scan_dir: Option<PathBuf>,
     packages: Vec<PathBuf>,
     packguard: PathBuf,
@@ -41,6 +42,7 @@ fn new_options() -> Options {
     Options {
         mode: "known".to_string(),
         refs: None,
+        benign: None,
         scan_dir: None,
         packages: Vec::new(),
         packguard: default_packguard(),
@@ -57,13 +59,15 @@ fn usage() {
          \x20      packguard-cli --tui [--packguard <path>]\n\n\
          \x20 --mode      known (v4c2 views/chunking) or new (raw NCD + primitives)\n\
          \x20 --refs      malware reference directory\n\
+         \x20 --benign    benign reference directory (known mode: enables the benign veto)\n\
          \x20 --scan-dir  scan every package directly inside this directory\n\
          \x20 --package   scan one package directory; repeatable\n\
          \x20 --packguard path to the C scanner (default build/packguard[.exe])\n\
          \x20 --threads   worker threads (default 4)\n\
          \x20 --reports   keep reports in this directory instead of a temp directory\n\
          \x20 --tui       interactive menu\n\n\
-         Stage 1 uses the aggressive 0.50 threshold in both modes; stage 2 filters false alarms."
+         Known mode: thresholds 0.70 raw / 0.65 normalised, benign margins 0.10 / 0.07 (needs --benign);\n\
+         new mode: 0.50 plus behavioural primitives. Stage 2 filters the remaining false alarms."
     );
 }
 
@@ -83,6 +87,9 @@ fn parse_args() -> Result<Options, String> {
                 }
             }
             "--refs" => opts.refs = Some(PathBuf::from(args.next().ok_or("--refs needs a directory")?)),
+            "--benign" => {
+                opts.benign = Some(PathBuf::from(args.next().ok_or("--benign needs a directory")?))
+            }
             "--scan-dir" => {
                 opts.scan_dir = Some(PathBuf::from(args.next().ok_or("--scan-dir needs a directory")?))
             }
@@ -181,7 +188,8 @@ fn run_scan(opts: &Options) -> Result<Vec<Report>, String> {
         opts.mode
     );
     io::stdout().flush().ok();
-    let output = Command::new(&opts.packguard)
+    let mut command = Command::new(&opts.packguard);
+    command
         .arg("--mode")
         .arg(&opts.mode)
         .arg("-j")
@@ -189,7 +197,11 @@ fn run_scan(opts: &Options) -> Result<Vec<Report>, String> {
         .arg("-p")
         .arg("256")
         .arg("-m")
-        .arg("256")
+        .arg("256");
+    if let Some(benign) = &opts.benign {
+        command.arg("-B").arg(benign);
+    }
+    let output = command
         .arg("-d")
         .arg(&reports_dir)
         .arg(refs)
@@ -430,7 +442,7 @@ fn run_tui(mut opts: Options) -> Result<(), String> {
     loop {
         print!("\x1b[2J\x1b[H");
         println!("PackGuard CLI - stage 1");
-        println!("Stage 1 uses the aggressive 0.50 threshold; stage 2 filters false alarms.\n");
+        println!("Known mode needs benign references [5] for its veto; stage 2 filters the rest.\n");
         println!("  [1] Mode:       {}", opts.mode);
         println!(
             "  [2] References: {}",
@@ -449,6 +461,13 @@ fn run_tui(mut opts: Options) -> Result<(), String> {
         println!(
             "  [4] Packguard:  {}",
             opts.packguard.display()
+        );
+        println!(
+            "  [5] Benign refs: {}",
+            opts.benign
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "<not set>".to_string())
         );
         println!("\n  [R] Run scan    [Q] Quit");
         let choice = prompt("> ")?;
@@ -476,6 +495,12 @@ fn run_tui(mut opts: Options) -> Result<(), String> {
                 let value = prompt("packguard path: ")?;
                 if !value.is_empty() {
                     opts.packguard = PathBuf::from(value);
+                }
+            }
+            "5" => {
+                let value = prompt("benign references directory: ")?;
+                if !value.is_empty() {
+                    opts.benign = Some(PathBuf::from(value));
                 }
             }
             "r" | "R" => match run_scan(&opts) {

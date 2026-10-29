@@ -1,0 +1,185 @@
+{
+ "summary": {
+  "ALL/ben": {
+   "flagged": 5,
+   "total": 232,
+   "rate": 0.021551724137931036
+  },
+  "ALL/ben_longtail": {
+   "flagged": 2,
+   "total": 68,
+   "rate": 0.029411764705882353
+  },
+  "ALL/ben_popular": {
+   "flagged": 3,
+   "total": 164,
+   "rate": 0.018292682926829267
+  },
+  "ALL/mal": {
+   "flagged": 459,
+   "total": 480,
+   "rate": 0.95625
+  },
+  "ALL/mal_known": {
+   "flagged": 197,
+   "total": 200,
+   "rate": 0.985
+  },
+  "ALL/mal_newname": {
+   "flagged": 135,
+   "total": 140,
+   "rate": 0.9642857142857143
+  },
+  "ALL/mal_newver": {
+   "flagged": 127,
+   "total": 140,
+   "rate": 0.9071428571428571
+  },
+  "T1/ben": {
+   "flagged": 1,
+   "total": 58,
+   "rate": 0.017241379310344827
+  },
+  "T1/ben_longtail": {
+   "flagged": 0,
+   "total": 17,
+   "rate": 0.0
+  },
+  "T1/ben_popular": {
+   "flagged": 1,
+   "total": 41,
+   "rate": 0.024390243902439025
+  },
+  "T1/mal": {
+   "flagged": 117,
+   "total": 120,
+   "rate": 0.975
+  },
+  "T1/mal_known": {
+   "flagged": 50,
+   "total": 50,
+   "rate": 1.0
+  },
+  "T1/mal_newname": {
+   "flagged": 34,
+   "total": 35,
+   "rate": 0.9714285714285714
+  },
+  "T1/mal_newver": {
+   "flagged": 33,
+   "total": 35,
+   "rate": 0.9428571428571428
+  },
+  "T2/ben": {
+   "flagged": 2,
+   "total": 58,
+   "rate": 0.034482758620689655
+  },
+  "T2/ben_longtail": {
+   "flagged": 0,
+   "total": 17,
+   "rate": 0.0
+  },
+  "T2/ben_popular": {
+   "flagged": 2,
+   "total": 41,
+   "rate": 0.04878048780487805
+  },
+  "T2/mal": {
+   "flagged": 113,
+   "total": 120,
+   "rate": 0.9416666666666667
+  },
+  "T2/mal_known": {
+   "flagged": 49,
+   "total": 50,
+   "rate": 0.98
+  },
+  "T2/mal_newname": {
+   "flagged": 33,
+   "total": 35,
+   "rate": 0.9428571428571428
+  },
+  "T2/mal_newver": {
+   "flagged": 31,
+   "total": 35,
+   "rate": 0.8857142857142857
+  },
+  "T3/ben": {
+   "flagged": 0,
+   "total": 58,
+   "rate": 0.0
+  },
+  "T3/ben_longtail": {
+   "flagged": 0,
+   "total": 17,
+   "rate": 0.0
+  },
+  "T3/ben_popular": {
+   "flagged": 0,
+   "total": 41,
+   "rate": 0.0
+  },
+  "T3/mal": {
+   "flagged": 113,
+   "total": 120,
+   "rate": 0.9416666666666667
+  },
+  "T3/mal_known": {
+   "flagged": 49,
+   "total": 50,
+   "rate": 0.98
+  },
+  "T3/mal_newname": {
+   "flagged": 33,
+   "total": 35,
+   "rate": 0.9428571428571428
+  },
+  "T3/mal_newver": {
+   "flagged": 31,
+   "total": 35,
+   "rate": 0.8857142857142857
+  },
+  "T4/ben": {
+   "flagged": 2,
+   "total": 58,
+   "rate": 0.034482758620689655
+  },
+  "T4/ben_longtail": {
+   "flagged": 2,
+   "total": 17,
+   "rate": 0.11764705882352941
+  },
+  "T4/ben_popular": {
+   "flagged": 0,
+   "total": 41,
+   "rate": 0.0
+  },
+  "T4/mal": {
+   "flagged": 116,
+   "total": 120,
+   "rate": 0.9666666666666667
+  },
+  "T4/mal_known": {
+   "flagged": 49,
+   "total": 50,
+   "rate": 0.98
+  },
+  "T4/mal_newname": {
+   "flagged": 35,
+   "total": 35,
+   "rate": 1.0
+  },
+  "T4/mal_newver": {
+   "flagged": 32,
+   "total": 35,
+   "rate": 0.9142857142857143
+  }
+ },
+ "run": {
+  "wall_seconds": 469.09000000000003,
+  "peak_mib": 2785.65234375,
+  "load_seconds": 93.6,
+  "scan_seconds_sum": 1477.039900000001
+ }
+}
