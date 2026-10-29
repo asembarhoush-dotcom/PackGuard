@@ -138,9 +138,12 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
 /*
  * Like load_references(), with content-defined chunking when use_cdc is
  * nonzero, normalised JavaScript references when normalise is nonzero, and
- * encoded payloads decoded when decode is nonzero. When use_exact_hash is
- * nonzero an open-addressed hash table of the kept chunks is built, so a
- * byte-identical target chunk scores 0 without running NCD.
+ * encoded payloads decoded when decode is nonzero. When drop_boilerplate is
+ * nonzero, raw reference chunks that are compiled module stubs are dropped;
+ * normalised references keep every chunk, because stage 2 filters false
+ * alarms. When use_exact_hash is nonzero an open-addressed hash table of the
+ * kept chunks is built, so a byte-identical target chunk scores 0 without
+ * running NCD.
  *
  * Returns 0 on success, -1 on failure; set is left empty on failure.
  */

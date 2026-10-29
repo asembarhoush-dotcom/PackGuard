@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "primitives.h"
 #include "report.h"
 #include "scanner.h"
 
@@ -26,6 +27,7 @@ typedef struct {
     int use_cdc;
     int normalised;
     int decode;
+    int primitives;
     double threshold;
     double script_threshold;
     const char *out_file;
@@ -39,13 +41,18 @@ typedef struct {
 static void usage(void)
 {
     fprintf(stderr,
-            "usage: packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-c 0|1|2]\n"
-            "                 [-n 0|1] [-e 0|1] [-t threshold] [-s script_threshold] [-k groups]\n"
+            "usage: packguard [--mode known|new] [-j threads] [-p candidates] [-m bytes]\n"
+            "                 [-b 0|1] [-c 0|1|2] [-n 0|1] [-e 0|1] [-t threshold]\n"
+            "                 [-s script_threshold] [-k groups]\n"
             "                 [-o report.json | -d report_dir]\n"
             "                 <reference_dir> <package_path>...\n"
             "  Scores every .js/.cjs/.mjs file and the root package.json install scripts\n"
             "  of each package_path against every file of reference_dir by NCD. The\n"
             "  references are loaded once for all packages.\n"
+            "  --mode known  the proven v4c2 views and chunking; JavaScript threshold\n"
+            "                0.62, install-script threshold 0.50\n"
+            "  --mode new    raw NCD plus behavioural primitives, no normalised view;\n"
+            "                threshold 0.50\n"
             "  -j  worker threads (default: all logical processors)\n"
             "  -p  LZJD prefilter: run NCD only on this many most similar reference\n"
             "      chunks per chunk (default %d; 0 scores every reference, exact)\n"
@@ -72,7 +79,7 @@ static int parse_args(int argc, char **argv, options *opt)
 {
     *opt = (options){.nthreads = cpu_count(), .candidates = DEFAULT_CANDIDATES,
                      .min_js_bytes = 256, .drop_boilerplate = 1, .use_cdc = 0,
-                     .normalised = 0, .decode = 1, .threshold = -1.0,
+                     .normalised = 0, .decode = 1, .primitives = 0, .threshold = -1.0,
                      .script_threshold = 0.45};
     int i = 1;
     for (; i < argc && argv[i][0] == '-' && argv[i][1] != '\0'; i++) {
@@ -83,6 +90,34 @@ static int parse_args(int argc, char **argv, options *opt)
         }
         if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0)
             return 1;
+        if (strcmp(a, "--mode") == 0 || strncmp(a, "--mode=", 7) == 0) {
+            const char *mode = a[6] == '=' ? a + 7 : (i + 1 < argc ? argv[++i] : NULL);
+            if (mode == NULL) {
+                fprintf(stderr, "packguard: --mode needs known or new\n");
+                return -1;
+            }
+            if (strcmp(mode, "known") == 0) {
+                opt->use_cdc = 2;
+                opt->normalised = 1;
+                opt->decode = 1;
+                opt->drop_boilerplate = 1;
+                opt->primitives = 0;
+                opt->threshold = 0.62;
+                opt->script_threshold = 0.50;
+            } else if (strcmp(mode, "new") == 0) {
+                opt->use_cdc = 0;
+                opt->normalised = 0;
+                opt->decode = 0;
+                opt->drop_boilerplate = 1;
+                opt->primitives = 1;
+                opt->threshold = 0.50;
+                opt->script_threshold = 0.50;
+            } else {
+                fprintf(stderr, "packguard: --mode needs known or new\n");
+                return -1;
+            }
+            continue;
+        }
         if (a[2] != '\0' || i + 1 >= argc || strchr("jtodkpmbscne", a[1]) == NULL) {
             fprintf(stderr, "packguard: bad option %s\n", a);
             return -1;
@@ -324,6 +359,30 @@ static const char *kind_report_name(file_kind kind)
 }
 
 /*
+ * Scans the package's raw chunks and returns the union of its JavaScript
+ * primitives, storing the install-script union in script_hits.
+ */
+static primitive_hits package_primitive_hits(const package_job *job, primitive_hits *script_hits)
+{
+    primitive_hits js = {0};
+    *script_hits = (primitive_hits){0};
+    for (size_t i = 0; i < job->targets.count; i++) {
+        const loaded_file *file = &job->targets.items[i];
+        if (file->kind == FILE_OTHER)
+            continue;
+        for (size_t j = 0; j < file->chunks.count; j++) {
+            const file_chunk *chunk = &file->chunks.chunks[j];
+            primitive_hits hits = primitives_scan(chunk->data, chunk->length);
+            if (file->kind == FILE_INSTALL_SCRIPT)
+                *script_hits = primitives_union(*script_hits, hits);
+            else
+                js = primitives_union(js, hits);
+        }
+    }
+    return js;
+}
+
+/*
  * Builds the report of a scored package and writes it to
  * opt->out_dir/<package folder>.json, to opt->out_file, or to stdout.
  * scores, and nears and near_counts when k > 0, hold the package's own
@@ -358,6 +417,19 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
     }
 
     double best_raw = DBL_MAX;
+    primitive_hits js_hits = {0};
+    primitive_hits script_hits = {0};
+    primitive_hits all_hits = {0};
+    char primitive_hits_text[128] = "";
+    unsigned primitive_score = 0;
+    int primitive_flagged = 0;
+    if (opt->primitives) {
+        js_hits = package_primitive_hits(job, &script_hits);
+        all_hits = primitives_union(js_hits, script_hits);
+        primitive_score = primitives_score(all_hits);
+        primitive_flagged = primitives_flagged(js_hits, 0) || primitives_flagged(script_hits, 1);
+        primitives_hits_string(all_hits, primitive_hits_text, sizeof primitive_hits_text);
+    }
     size_t ignored = 0;
     size_t fallback = SIZE_MAX;
     size_t fallback_len = 0;
@@ -436,6 +508,8 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
             flagged = 1;
     if (opt->threshold >= 0.0 && best_norm <= opt->threshold)
         flagged = 1;
+    if (primitive_flagged)
+        flagged = 1;
 
     char name[512], version[512];
     package_id(pkg, name, version, sizeof name);
@@ -464,6 +538,10 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
         .threshold = opt->threshold,
         .has_threshold = opt->threshold >= 0.0,
         .flagged = flagged,
+        .primitive_score = primitive_score,
+        .has_primitive = opt->primitives,
+        .primitive_flagged = primitive_flagged,
+        .primitive_hits = opt->primitives ? primitive_hits_text : NULL,
         .seconds = job->seconds,
         .has_seconds = 1,
         .matched = matched,
@@ -481,13 +559,21 @@ static int write_package(const reference_set *refs, const reference_set *norm_re
         fprintf(stderr, "packguard: writing the report failed\n");
         goto done;
     }
-    if (has_score)
+    if (has_score && opt->normalised)
         fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f%s, raw %.4f, normalised %.4f, %.1f s\n",
                 pkg, job->targets.count, count, best, low_confidence ? " (low confidence)" : "",
                 best_raw, best_norm, job->seconds);
+    else if (has_score)
+        fprintf(stderr, "packguard: %s: %zu files, %zu chunks, score %.4f%s, raw %.4f, %.1f s\n",
+                pkg, job->targets.count, count, best, low_confidence ? " (low confidence)" : "",
+                best_raw, job->seconds);
     else
         fprintf(stderr, "packguard: %s: no JavaScript or install scripts, score null, %.1f s\n", pkg,
                 job->seconds);
+    if (opt->primitives)
+        fprintf(stderr, "packguard: %s: primitive score %u%s%s%s\n", pkg, primitive_score,
+                primitive_flagged ? " (flagged)" : "",
+                primitive_hits_text[0] != '\0' ? ", hits " : "", primitive_hits_text);
     status = 0;
 
 done:
