@@ -22,7 +22,7 @@ PackGuard tests whether we can have both: accurate detection that runs on an ord
 ```mermaid
 flowchart LR
     A[npm package] --> B[Unpack & split files<br/>fixed or content-defined chunks<br/>+ package.json install scripts]
-    B --> C[Stage 1: Compression scanner<br/>NCD vs. known malware<br/>raw + normalised views]
+    B --> C[Stage 1: Compression scanner<br/>NCD vs. known malware and benign code<br/>raw + normalised views]
     C -->|not suspicious| D[Clean]
     C -->|flagged| E[Stage 2: AI filter<br/>fine-tuned ModernBERT]
     E -->|false alarm| D
@@ -35,7 +35,7 @@ flowchart LR
 NCD(x, y) = (C(xy) − min(C(x), C(y))) / max(C(x), C(y))
 ```
 
-Values near 0 mean very similar; near 1 means unrelated. Each package is scored by its most suspicious file or chunk, with a threshold tuned to catch ~99% of malware.
+Values near 0 mean very similar; near 1 means unrelated. Each package is scored by its most suspicious file or chunk. In the known mode a chunk only counts when it is closer to malware than to a large set of benign npm code by a margin, so copied libraries and generic code do not raise alarms.
 
 **Stage 2 – AI false-alarm filter (Python → ONNX).** A pretrained, code-aware model (ModernBERT) reviews **only** the packages flagged by stage 1. A hierarchical design lets it read whole packages, guided by the suspicious regions found in stage 1. The trained model is exported to ONNX, quantized to 8-bit and runs on a standard CPU through the ONNX Runtime C API, inside the same C scanner.
 
@@ -66,6 +66,7 @@ PackGuard/
 ├── experiments/v3/             # v3 stage-1 accuracy: tiny chunks, boilerplate, script threshold
 ├── experiments/v4/             # v4 renamed/mangled benchmark: T1-T4 transforms, results
 ├── experiments/v5/             # v5 two-mode design: known v4c2 mode and new-campaign mode
+├── experiments/v6/             # v6 known mode: benign veto, payload files, repeat collapsing
 ├── docs/                       # Design notes and stage-1 suggestions
 ├── scripts/build-windows.ps1   # Native Windows build (zig + static liblzma)
 ├── Makefile                    # Linux/macOS build
@@ -141,30 +142,42 @@ docker run --rm --network none -v "$PWD/refs:/refs:ro" -v "$PWD/samples:/work:ro
 
 ```bash
 build/packguard [--mode known|new] [-j threads] [-p candidates] [-m bytes] [-b 0|1] \
-                [-c 0|1|2] [-n 0|1] [-e 0|1] [-t threshold] [-s script_threshold] \
+                [-c 0|1|2] [-n 0|1] [-e 0|1|2] [-x 0|1] [-t threshold] [-s script_threshold] \
+                [-u norm_threshold] [-B benign_dir] [-q candidates] [-g margin] [-G norm_margin] \
                 [-k groups] [-o report.json | -d report_dir] \
                 <reference_dir> <package_path>...
 ```
 
 | Option | Meaning |
 |---|---|
-| `--mode` | `known` uses the v4c2 views/chunking with JavaScript threshold 0.62 and install-script threshold 0.50; `new` uses raw NCD plus behavioural primitives, no normalised view, at 0.50. Stage 2 filters the false alarms. |
+| `--mode` | `known` (v6): raw + normalised views, CDC on the normalised view, payload files and repeat collapsing, thresholds 0.70 raw / 0.65 normalised / 0.50 install scripts and, with `-B`, benign margins 0.10 / 0.07 and benign prefilter `-q 64`. `new`: raw NCD plus behavioural primitives, no normalised view, at 0.50. Options after `--mode` override it. |
 | `-j` | Worker threads, started once per run (default: all logical processors) |
 | `-p` | LZJD prefilter: run NCD only on this many most similar reference chunks per chunk (default 256; `0` scores every reference, the exact brute-force mode) |
 | `-m` | Leave JavaScript chunks shorter than this many bytes out of the package score (default 256; `0` scores every chunk) |
 | `-b` | Drop reference chunks that hold only a compiled module stub (default `1`; `0` keeps every reference chunk) |
 | `-c` | Chunking: `0` fixed 8 KB windows, `1` content-defined chunks in both views, `2` content-defined chunks in the normalised view only (default `0`) |
 | `-n` | Also score a normalised JavaScript view and report `score_raw`, `score_normalized`, `score_view` and `normalized_match` (default `0`) |
-| `-e` | With `-n`, decode base64 and hex payloads before scoring (default `1`) |
+| `-e` | Decode base64 and hex payloads: `0` off, `1` inline in the normalised view (v4), `2` also as payload files of their own in both views (default `1`) |
+| `-x` | Drop blocks repeated 3 or more times from the normalised view (default `0`) |
 | `-t` | Add each chunk's `threshold` and `flagged`, and the package `flagged`, using this threshold for JavaScript and other file chunks |
 | `-s` | With `-t`, the threshold for install-script chunks (default 0.45) |
+| `-u` | With `-t`, the threshold for normalised-view chunks (default: `-t`) |
+| `-B` | Benign reference directory: a JavaScript or normalised chunk only counts when it is closer to malware than to any benign chunk by the margin |
+| `-q` | With `-B`, LZJD prefilter candidates for the benign references (default: `-p`; 64 in `--mode known`) |
+| `-g` / `-G` | With `-B`, the margin for raw / normalised chunks (default 0) |
 | `-k` | Per chunk, also list the `k` closest reference groups (first folder below `reference_dir`, the code-shape folder in v1) |
 | `-o` | Write the report of a single package to a file (default: stdout) |
 | `-d` | Write one report per package to `report_dir/<package folder>.json` |
 
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
 
-**v5 modes.** `--mode known` uses the v4c2 views and chunking (raw + normalised, CDC on the normalised view) with JavaScript threshold 0.62 and install-script threshold 0.50. `--mode new` is the new-campaign path: it scores the raw view, adds an install-script/JavaScript behavioural-primitive flag, and does not load the normalised view, at 0.50. Stage 2 is built and filters false alarms. Full v5 results and the tuning recommendation are in [`experiments/v5/`](experiments/v5/README.md).
+**Modes.** `--mode known` (v6) is for renamed and mangled known families: `-c 2 -n 1 -e 2 -x 1 -b 1 -t 0.70 -u 0.65 -s 0.50 -g 0.10 -G 0.07 -q 64`, and it needs `-B <benign_dir>` for the benign veto (it warns without it). On the v4 mangling benchmark it flags T1 97.5%, T2 94.2%, T3 94.2% and T4 96.7% of the malware variants and 2.2% of the benign controls (1.3% with `-q 256`, at 700 s instead of 469 s); v5 flagged 35.3% of the benign controls. See [`experiments/v6/`](experiments/v6/README.md). `--mode new` is the new-campaign path: it scores the raw view, adds an install-script/JavaScript behavioural-primitive flag, and does not load the normalised view, at 0.50 ([`experiments/v5/`](experiments/v5/README.md)).
+
+**Benign references.** `-B` loads a second reference set of benign npm code (v6: 5,211 packages, 171 MB of JavaScript, built by `experiments/v6/scripts/build_benign.py`) and scores every chunk against it as well, in both views. A JavaScript or normalised chunk is flagged only when `ncd_malware <= threshold` and `ncd_malware + margin < ncd_benign`; install scripts are judged on their malware distance alone. Malware often ships copies of real libraries and generic stubs, and this two-class rule keeps those from raising alarms. Each chunk in the report adds `benign_ncd` and `benign_match`, and the package adds `benign_vetoed`.
+
+**Payload files.** With `-e 2`, every base64 or hex payload in a JavaScript file (the whole file or a string literal of 16 or more bytes, nested up to two levels, decoding to mostly text, UTF-8 included) is also scored as a file of its own, `<file>#payload<n>`, in the raw and the normalised view. An `eval(Buffer.from("…", "base64"))` wrapper then no longer dilutes the code it hides.
+
+**Repeat collapsing.** With `-x 1`, the normalised view drops every block (cut after each `}` and before each `function`) of 16 or more bytes that occurs 3 or more times in the file, in references and targets alike. Template-generated filler such as inserted dead functions disappears, so padding no longer hides a small malicious file inside a big window. With `-n 1` the report also lists `normalized_chunks`: every normalised chunk with its length, malware and benign distances and verdict.
 
 **Rust CLI/TUI.** [`frontend/`](frontend/README.md) is a small Rust wrapper. It runs the C scanner with the selected mode, reads the JSON reports, and prints a ranked table; `--tui` opens a simple interactive menu.
 
@@ -172,6 +185,7 @@ The references are loaded and their C(x) cached once, then every package is scan
 cd frontend
 cargo build --release
 ./target/release/packguard-cli --mode new --refs <reference_dir> --scan-dir <package_dir>
+./target/release/packguard-cli --mode known --refs <reference_dir> --benign <benign_dir> --scan-dir <package_dir>
 ./target/release/packguard-cli --tui --packguard ../build/packguard
 ```
 
@@ -259,6 +273,7 @@ Lower `ncd` = more similar to known malware. `match` is the closest reference ch
 | Install-script threshold | 0.45 with `-t`, against 0.19 for JavaScript and other files |
 | v4 views | Raw plus normalised JavaScript (comments/whitespace removed, identifiers `I`, strings `S`, numbers `N`, base64/hex decoded); package score is the lower view |
 | v4 chunking | Fixed 8 KB windows for the raw view, content-defined 2/8/16 KiB boundaries for the normalised view (`-c 2`) |
+| v6 known mode | v4 views and chunking plus payload files (`-e 2`), repeat collapsing (`-x 1`) and the benign veto (`-B`); thresholds 0.70 raw, 0.65 normalised, 0.50 install scripts; margins 0.10 raw, 0.07 normalised |
 | Stage 1 threshold | Tuned for ~99% malware recall on validation data |
 | Stage 2 model | ModernBERT-base, fine-tuned, 8-bit quantized ONNX |
 
@@ -273,7 +288,7 @@ The v1 malware set is in `data/v1/malware_js_0.zip` to `malware_js_f.zip` (encry
 - MalwareBench (access on request)
 - [OpenSSF malicious-packages](https://github.com/ossf/malicious-packages) (used to confirm live-scan detections)
 
-Benign packages are downloaded from the public npm registry. Near-duplicates are removed and data is **split by publication date** to simulate detecting unseen attacks.
+Benign packages are downloaded from the public npm registry. Near-duplicates are removed and data is **split by publication date** to simulate detecting unseen attacks. v6 adds a raw corpus of 6,014 benign npm tarballs (popular and long-tail, every test package name excluded), filtered into the benign reference set and a validation set; see [`dataset_index.md`](dataset_index.md).
 
 ## Evaluation
 
@@ -281,6 +296,7 @@ Benign packages are downloaded from the public npm registry. Near-duplicates are
 - **Baseline:** GuardDog, evaluated on the same test data
 - **Experiments:** compressor (xz vs. zstd vs. PPMd), chunk size (4 / 8 / 16 KB), with vs. without the AI filter
 - **v4:** known malware renamed and mangled through T1–T4 transformations, scored against the v1 reference set; see [`experiments/v4/`](experiments/v4/README.md)
+- **v6:** the known mode tuned on a separate validation set (same transforms, different packages) and measured on the v4 benchmark: T1 97.5%, T2 94.2%, T3 94.2%, T4 96.7%, 2.2% benign flagged (default `-q 64`); see [`experiments/v6/`](experiments/v6/README.md)
 - **Live test:** 30-day scan of newly published npm packages, confirmed via npm security takedowns and OpenSSF reports
 
 The first stage 1 measurements, on 195 small packages, are in [`experiments/v1/`](experiments/v1/README.md): known malware and renamed clones are flagged with no benign false alarm, but malware from an unseen family mostly is not, which is the job of stage 2. The v4 benchmark adds the missing renamed/mangled measurement: `-c 2 -n 1 -e 1` raises overall known-family recall from 9.8% to 64.8% at 0.19 and from 28.7% to 75.2% at 0.30, with benign false alarms at 2.6% and 3.4%.

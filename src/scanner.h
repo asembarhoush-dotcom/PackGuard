@@ -13,6 +13,14 @@ typedef enum {
     FILE_OTHER
 } file_kind;
 
+/* How JavaScript is read: chunking, normalised view, payload decoding (0 off, 1 inline, 2 separate) and repeat collapsing. */
+typedef struct {
+    int use_cdc;
+    int normalise;
+    int decode;
+    int collapse;
+} view_options;
+
 /* One file read into memory, split into chunks and tagged with what it holds. */
 typedef struct {
     char *path;
@@ -90,14 +98,20 @@ typedef struct {
 int collect_files(file_list *list, const char *path);
 
 /*
- * Like collect_files(), with content-defined chunking when use_cdc is
- * nonzero. When normalise is nonzero only JavaScript files are collected and
- * each is replaced by its normalised token stream (see normalise_js()), with
- * encoded payloads decoded when decode is nonzero.
+ * Like collect_files(), with content-defined chunking when view->use_cdc is
+ * nonzero. When view->normalise is nonzero only JavaScript files are
+ * collected and each is replaced by its normalised token stream (see
+ * normalise_js()), with repeated blocks removed (see collapse_repeats())
+ * when view->collapse is nonzero. view->decode 1 appends decoded payloads
+ * to the normalised stream inline; 2 does that too and also adds every
+ * payload that find_payloads() finds in a JavaScript file as a file of its
+ * own, named
+ * <path>#payload<n> (n from 1), in either view: the decoded bytes in the raw
+ * view, their normalised copy in the normalised view.
  *
  * Returns 0 on success, -1 on failure.
  */
-int collect_files_ex(file_list *list, const char *path, int use_cdc, int normalise, int decode);
+int collect_files_ex(file_list *list, const char *path, const view_options *view);
 
 /* Frees every file in list and resets it to empty. */
 void free_files(file_list *list);
@@ -136,9 +150,8 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
                     int drop_boilerplate);
 
 /*
- * Like load_references(), with content-defined chunking when use_cdc is
- * nonzero, normalised JavaScript references when normalise is nonzero, and
- * encoded payloads decoded when decode is nonzero. When drop_boilerplate is
+ * Like load_references(), with every reference read as collect_files_ex()
+ * reads it with view. When drop_boilerplate is
  * nonzero, raw reference chunks that are compiled module stubs are dropped;
  * normalised references keep every chunk, because stage 2 filters false
  * alarms. When use_exact_hash is nonzero an open-addressed hash table of the
@@ -148,8 +161,7 @@ int load_references(reference_set *set, const char *dir, size_t nthreads, size_t
  * Returns 0 on success, -1 on failure; set is left empty on failure.
  */
 int load_references_ex(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
-                       int drop_boilerplate, int use_cdc, int normalise, int decode,
-                       int use_exact_hash);
+                       int drop_boilerplate, const view_options *view, int use_exact_hash);
 
 /*
  * Scores chunk against every reference on all threads:

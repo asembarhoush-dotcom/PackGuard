@@ -35,7 +35,25 @@ typedef struct {
     const report_near *near;
     size_t near_count;
     int ignored;
+    double benign_ncd;
+    int has_benign;
+    const char *benign_match;
 } report_chunk;
+
+/* One scored normalised-view chunk: where it is, its closest malware and benign references and its verdict. */
+typedef struct {
+    const char *file;
+    size_t start;
+    size_t length;
+    double ncd;
+    const char *match_file;
+    double benign_ncd;
+    int has_benign;
+    const char *benign_match;
+    double threshold;
+    int has_threshold;
+    int flagged;
+} report_view_chunk;
 
 /* Stage 1 result for one package, as written by write_report(). */
 typedef struct {
@@ -61,12 +79,16 @@ typedef struct {
     int has_primitive;
     int primitive_flagged;
     const char *primitive_hits;
+    int has_benign;
+    size_t benign_vetoed;
     double seconds;
     int has_seconds;
     const report_match *matched;
     size_t matched_count;
     const report_chunk *chunks;
     size_t count;
+    const report_view_chunk *norm_chunks;
+    size_t norm_count;
 } package_report;
 
 /*
@@ -76,13 +98,19 @@ typedef struct {
  * (only when has_threshold is set; flagged is r->flagged, the OR of the
  * per-chunk rules and the primitive rule), primitive_score,
  * primitive_flagged and primitive_hits (only when has_primitive is set),
- * seconds (scan time, only when has_seconds is set), matched_packages (only
- * when matched is not NULL: a list of {package, group, ncd, chunks} in the
- * given order), then one entry per chunk with file, kind (when not NULL),
- * start, ncd, threshold and flagged (each only when has_threshold is set),
- * ignored (only when set), match {file, package (when match_package is not
- * NULL), start}, near (only when the chunk has near_count > 0: a list of
- * {group, ncd}, closest first) and text.
+ * benign_vetoed (only when has_benign is set: how many chunks were within
+ * their threshold but no closer to malware than to benign code by the
+ * margin), seconds (scan time, only when has_seconds is set),
+ * matched_packages (only when matched is not NULL: a list of {package,
+ * group, ncd, chunks} in the given order), then one entry per chunk with
+ * file, kind (when not NULL), start, ncd, threshold and flagged (each only
+ * when has_threshold is set), ignored (only when set), match {file, package
+ * (when match_package is not NULL), start}, benign_ncd and benign_match
+ * (only when the chunk has_benign), near (only when the chunk has
+ * near_count > 0: a list of {group, ncd}, closest first) and text; and,
+ * when norm_chunks is not NULL, normalized_chunks: one entry per normalised
+ * chunk with file, start, length, ncd, match, benign_ncd and benign_match
+ * (when it has_benign), and threshold and flagged (when has_threshold).
  * r and everything it points to are only borrowed for the call.
  * Strings are escaped per RFC 8259. Chunk text is raw file bytes cut at
  * fixed offsets, so any byte that is not part of a valid UTF-8 sequence is

@@ -140,15 +140,15 @@ static int add_chunks(file_list *list, const char *path, chunk_list chunks, file
 }
 
 /*
- * Reads and splits the file at path and appends it to list, using
- * content-defined chunking when use_cdc is nonzero. Files with no chunks
- * (empty files) are not added.
+ * Splits len bytes of buf (taking ownership of it), with content-defined
+ * chunking when use_cdc is nonzero, and appends them to list under path.
  * Returns 0 on success, -1 on failure.
  */
-static int add_file(file_list *list, const char *path, file_kind kind, int use_cdc)
+static int add_buffer(file_list *list, const char *path, unsigned char *buf, size_t len, file_kind kind,
+                      int use_cdc)
 {
     chunk_list chunks;
-    int rc = use_cdc ? split_file_cdc(path, &chunks) : split_file(path, &chunks);
+    int rc = use_cdc ? split_buffer_cdc(buf, len, &chunks) : split_buffer(buf, len, &chunks);
     if (rc != 0) {
         fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
         return -1;
@@ -157,12 +157,91 @@ static int add_file(file_list *list, const char *path, file_kind kind, int use_c
 }
 
 /*
- * Reads the JavaScript file at path, replaces it with its normalised token
- * stream (decoding encoded payloads when decode is nonzero), splits that
- * stream and appends it to list under the original path.
+ * Returns a malloc'd normalised copy of len bytes of JavaScript as view asks
+ * for it (inline payload decoding whenever view->decode is set, so a file
+ * that only wraps a payload still carries that payload's code, and repeated
+ * blocks removed when view->collapse is set), storing its length in
+ * *out_len. Returns NULL on failure.
+ */
+static unsigned char *normalised_copy(const unsigned char *data, size_t len, const view_options *view,
+                                      size_t *out_len)
+{
+    unsigned char *norm = normalise_js(data, len, view->decode != 0, out_len);
+    if (norm != NULL && view->collapse)
+        *out_len = collapse_repeats(norm, *out_len);
+    return norm;
+}
+
+/*
+ * Appends every payload that find_payloads() finds in len bytes of the
+ * JavaScript file at path to list as a file of its own, <path>#payload<n>:
+ * the decoded bytes in the raw view, or their normalised copy when
+ * view->normalise is set.
  * Returns 0 on success, -1 on failure.
  */
-static int add_normalised_file(file_list *list, const char *path, int use_cdc, int decode)
+static int add_payloads(file_list *list, const char *path, const unsigned char *data, size_t len,
+                        const view_options *view)
+{
+    payload_list payloads;
+    find_payloads(data, len, &payloads);
+    if (payloads.count == 0)
+        return 0;
+    size_t name_len = strlen(path) + 32;
+    char *name = malloc(name_len);
+    int rc = name == NULL ? -1 : 0;
+    for (size_t i = 0; i < payloads.count && rc == 0; i++) {
+        snprintf(name, name_len, "%s#payload%zu", path, i + 1);
+        unsigned char *buf = payloads.data[i];
+        size_t buf_len = payloads.len[i];
+        payloads.data[i] = NULL;
+        if (view->normalise) {
+            unsigned char *norm = normalised_copy(buf, buf_len, view, &buf_len);
+            free(buf);
+            if (norm == NULL) {
+                rc = -1;
+                break;
+            }
+            buf = norm;
+        }
+        rc = add_buffer(list, name, buf, buf_len, FILE_JS, view->use_cdc);
+    }
+    free(name);
+    free_payloads(&payloads);
+    return rc;
+}
+
+/*
+ * Reads and splits the file at path and appends it to list, using
+ * content-defined chunking when view->use_cdc is nonzero, followed by its
+ * payload files when it is JavaScript and view->decode is 2. Files with no
+ * chunks (empty files) are not added.
+ * Returns 0 on success, -1 on failure.
+ */
+static int add_file(file_list *list, const char *path, file_kind kind, const view_options *view)
+{
+    chunk_list chunks;
+    int rc = view->use_cdc ? split_file_cdc(path, &chunks) : split_file(path, &chunks);
+    if (rc != 0) {
+        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
+        return -1;
+    }
+    if (kind != FILE_JS || view->decode != 2 || chunks.count == 0)
+        return add_chunks(list, path, chunks, kind);
+    size_t at = list->count;
+    if (add_chunks(list, path, chunks, kind) != 0)
+        return -1;
+    const chunk_list *added = &list->items[at].chunks;
+    return add_payloads(list, path, added->buffer, added->file_size, view);
+}
+
+/*
+ * Reads the JavaScript file at path, replaces it with its normalised token
+ * stream as view asks for it (see normalised_copy()), splits that stream and
+ * appends it to list under the original path, followed by its normalised
+ * payload files when view->decode is 2.
+ * Returns 0 on success, -1 on failure.
+ */
+static int add_normalised_file(file_list *list, const char *path, const view_options *view)
 {
     size_t len = 0;
     unsigned char *raw = read_file(path, &len);
@@ -171,19 +250,17 @@ static int add_normalised_file(file_list *list, const char *path, int use_cdc, i
         return -1;
     }
     size_t norm_len = 0;
-    unsigned char *norm = normalise_js(raw, len, decode, &norm_len);
-    free(raw);
+    unsigned char *norm = normalised_copy(raw, len, view, &norm_len);
     if (norm == NULL) {
+        free(raw);
         fprintf(stderr, "packguard: %s: normalising failed\n", path);
         return -1;
     }
-    chunk_list chunks;
-    int rc = use_cdc ? split_buffer_cdc(norm, norm_len, &chunks) : split_buffer(norm, norm_len, &chunks);
-    if (rc != 0) {
-        fprintf(stderr, "packguard: %s: %s\n", path, strerror(errno));
-        return -1;
-    }
-    return add_chunks(list, path, chunks, FILE_JS);
+    int rc = add_buffer(list, path, norm, norm_len, FILE_JS, view->use_cdc);
+    if (rc == 0 && view->decode == 2)
+        rc = add_payloads(list, path, raw, len, view);
+    free(raw);
+    return rc;
 }
 
 /*
@@ -222,11 +299,12 @@ static int add_manifest(file_list *list, const char *path)
  * package.json, is added whole. Each added file is tagged with its kind:
  * FILE_INSTALL_SCRIPT for the two script names, FILE_JS for the three
  * JavaScript extensions, FILE_OTHER for any other file passed directly.
- * When normalise is nonzero only JavaScript files are added, each as its
- * normalised token stream. use_cdc selects content-defined chunking.
+ * When view->normalise is nonzero only JavaScript files are added, each as
+ * its normalised token stream; the rest of view applies as
+ * collect_files_ex() describes.
  * Returns 0 on success, -1 on failure.
  */
-static int collect(file_list *list, const char *path, int depth, int use_cdc, int normalise, int decode)
+static int collect(file_list *list, const char *path, int depth, const view_options *view)
 {
     path_kind kind = path_type(path);
     if (kind == PATH_MISSING) {
@@ -235,13 +313,13 @@ static int collect(file_list *list, const char *path, int depth, int use_cdc, in
     }
     if (kind == PATH_FILE) {
         if (has_name(path, "package.json"))
-            return normalise || depth > 1 ? 0 : add_manifest(list, path);
-        if (normalise)
-            return is_js(path) ? add_normalised_file(list, path, use_cdc, decode) : 0;
+            return view->normalise || depth > 1 ? 0 : add_manifest(list, path);
+        if (view->normalise)
+            return is_js(path) ? add_normalised_file(list, path, view) : 0;
         if (depth != 0 && !is_js(path) && !has_name(path, SCRIPTS_FILE))
             return 0;
         return add_file(list, path, has_name(path, SCRIPTS_FILE) ? FILE_INSTALL_SCRIPT
-                               : is_js(path) ? FILE_JS : FILE_OTHER, use_cdc);
+                               : is_js(path) ? FILE_JS : FILE_OTHER, view);
     }
     if (kind != PATH_DIR)
         return 0;
@@ -265,7 +343,7 @@ static int collect(file_list *list, const char *path, int depth, int use_cdc, in
             break;
         }
         snprintf(child, len, "%s%s%s", path, sep, names[i]);
-        rc = collect(list, child, depth + 1, use_cdc, normalise, decode);
+        rc = collect(list, child, depth + 1, view);
         free(child);
     }
     free_names(names, n);
@@ -274,12 +352,13 @@ static int collect(file_list *list, const char *path, int depth, int use_cdc, in
 
 int collect_files(file_list *list, const char *path)
 {
-    return collect(list, path, 0, 0, 0, 0);
+    view_options view = {0};
+    return collect(list, path, 0, &view);
 }
 
-int collect_files_ex(file_list *list, const char *path, int use_cdc, int normalise, int decode)
+int collect_files_ex(file_list *list, const char *path, const view_options *view)
 {
-    return collect(list, path, 0, use_cdc, normalise, decode);
+    return collect(list, path, 0, view);
 }
 
 void free_files(file_list *list)
@@ -812,8 +891,7 @@ static void group_hit(const reference_set *set, size_t ref, double *group_best)
 }
 
 int load_references_ex(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
-                       int drop_boilerplate, int use_cdc, int normalise, int decode,
-                       int use_exact_hash)
+                       int drop_boilerplate, const view_options *view, int use_exact_hash)
 {
     size_t *file_group = NULL;
     *set = (reference_set){0};
@@ -833,7 +911,7 @@ int load_references_ex(reference_set *set, const char *dir, size_t nthreads, siz
         goto fail;
     }
 
-    if (collect(&set->files, dir, 0, use_cdc, normalise, decode) != 0)
+    if (collect(&set->files, dir, 0, view) != 0)
         goto fail;
     for (size_t i = 0; i < set->files.count; i++)
         set->total_chunks += set->files.items[i].chunks.count;
@@ -901,7 +979,8 @@ fail:
 int load_references(reference_set *set, const char *dir, size_t nthreads, size_t candidates,
                     int drop_boilerplate)
 {
-    return load_references_ex(set, dir, nthreads, candidates, drop_boilerplate, 0, 0, 0, 0);
+    view_options view = {0};
+    return load_references_ex(set, dir, nthreads, candidates, drop_boilerplate, &view, 0);
 }
 
 /*

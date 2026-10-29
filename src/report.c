@@ -99,7 +99,7 @@ static void json_number(FILE *out, double x)
 int write_report(FILE *out, const package_report *r)
 {
     if (out == NULL || r == NULL || (r->chunks == NULL && r->count > 0)
-        || (r->matched == NULL && r->matched_count > 0))
+        || (r->matched == NULL && r->matched_count > 0) || (r->norm_chunks == NULL && r->norm_count > 0))
         return -1;
 
     fputs("{\n  \"package\": ", out);
@@ -149,6 +149,8 @@ int write_report(FILE *out, const package_report *r)
             json_string(out, r->primitive_hits);
         }
     }
+    if (r->has_benign)
+        fprintf(out, ",\n  \"benign_vetoed\": %zu", r->benign_vetoed);
     if (r->has_seconds) {
         fputs(",\n  \"seconds\": ", out);
         json_number(out, r->seconds);
@@ -192,6 +194,12 @@ int write_report(FILE *out, const package_report *r)
             json_string(out, c->match_package);
         }
         fprintf(out, ", \"start\": %zu }", c->match_start);
+        if (c->has_benign) {
+            fputs(", \"benign_ncd\": ", out);
+            json_number(out, c->benign_ncd);
+            fputs(", \"benign_match\": ", out);
+            json_string(out, c->benign_match);
+        }
         if (c->near != NULL && c->near_count > 0) {
             fputs(", \"near\": [", out);
             for (size_t k = 0; k < c->near_count; k++) {
@@ -208,7 +216,33 @@ int write_report(FILE *out, const package_report *r)
             json_escape(out, c->text, c->text_len);
         fputs("\" }", out);
     }
-    fputs(r->count ? "\n  ]\n}\n" : "]\n}\n", out);
+    fputs(r->count ? "\n  ]" : "]", out);
+    if (r->norm_chunks != NULL) {
+        fputs(",\n  \"normalized_chunks\": [", out);
+        for (size_t i = 0; i < r->norm_count; i++) {
+            const report_view_chunk *c = &r->norm_chunks[i];
+            fprintf(out, "%s\n    { \"file\": ", i ? "," : "");
+            json_string(out, c->file);
+            fprintf(out, ", \"start\": %zu, \"length\": %zu, \"ncd\": ", c->start, c->length);
+            json_number(out, c->ncd);
+            fputs(", \"match\": ", out);
+            json_string(out, c->match_file);
+            if (c->has_benign) {
+                fputs(", \"benign_ncd\": ", out);
+                json_number(out, c->benign_ncd);
+                fputs(", \"benign_match\": ", out);
+                json_string(out, c->benign_match);
+            }
+            if (c->has_threshold) {
+                fputs(", \"threshold\": ", out);
+                json_number(out, c->threshold);
+                fprintf(out, ", \"flagged\": %s", c->flagged ? "true" : "false");
+            }
+            fputs(" }", out);
+        }
+        fputs(r->norm_count ? "\n  ]" : "]", out);
+    }
+    fputs("\n}\n", out);
 
     return ferror(out) ? -1 : 0;
 }
