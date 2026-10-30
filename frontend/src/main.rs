@@ -1,6 +1,7 @@
+mod tui;
+
 use std::env;
 use std::fs;
-use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -32,9 +33,9 @@ struct Report {
 
 fn default_packguard() -> PathBuf {
     if cfg!(windows) {
-        PathBuf::from("build/packguard.exe")
+        PathBuf::from("packguard.exe")
     } else {
-        PathBuf::from("build/packguard")
+        PathBuf::from("packguard")
     }
 }
 
@@ -57,17 +58,15 @@ fn usage() {
         "usage: packguard-cli [--mode known|new] --refs <dir>\n\
          \x20                  (--scan-dir <dir> | --package <dir>...) [options]\n\
          \x20      packguard-cli --tui [--packguard <path>]\n\n\
-         \x20 --mode      known (v4c2 views/chunking) or new (raw NCD + primitives)\n\
+         \x20 --mode      known (v6 views + benign veto) or new (raw NCD + primitives)\n\
          \x20 --refs      malware reference directory\n\
          \x20 --benign    benign reference directory (known mode: enables the benign veto)\n\
          \x20 --scan-dir  scan every package directly inside this directory\n\
          \x20 --package   scan one package directory; repeatable\n\
-         \x20 --packguard path to the C scanner (default build/packguard[.exe])\n\
+         \x20 --packguard path to the C scanner (default: packguard[.exe] from PATH)\n\
          \x20 --threads   worker threads (default 4)\n\
          \x20 --reports   keep reports in this directory instead of a temp directory\n\
-         \x20 --tui       interactive menu\n\n\
-         Known mode: thresholds 0.70 raw / 0.65 normalised, benign margins 0.10 / 0.07 (needs --benign);\n\
-         new mode: 0.50 plus behavioural primitives. Stage 2 filters the remaining false alarms."
+         \x20 --tui       full-screen terminal interface (make menuconfig style)"
     );
 }
 
@@ -86,12 +85,20 @@ fn parse_args() -> Result<Options, String> {
                     return Err("--mode needs known or new".to_string());
                 }
             }
-            "--refs" => opts.refs = Some(PathBuf::from(args.next().ok_or("--refs needs a directory")?)),
+            "--refs" => {
+                opts.refs = Some(PathBuf::from(
+                    args.next().ok_or("--refs needs a directory")?,
+                ))
+            }
             "--benign" => {
-                opts.benign = Some(PathBuf::from(args.next().ok_or("--benign needs a directory")?))
+                opts.benign = Some(PathBuf::from(
+                    args.next().ok_or("--benign needs a directory")?,
+                ))
             }
             "--scan-dir" => {
-                opts.scan_dir = Some(PathBuf::from(args.next().ok_or("--scan-dir needs a directory")?))
+                opts.scan_dir = Some(PathBuf::from(
+                    args.next().ok_or("--scan-dir needs a directory")?,
+                ))
             }
             "--package" => opts.packages.push(PathBuf::from(
                 args.next().ok_or("--package needs a directory")?,
@@ -109,7 +116,9 @@ fn parse_args() -> Result<Options, String> {
                 }
             }
             "--reports" => {
-                opts.reports = Some(PathBuf::from(args.next().ok_or("--reports needs a directory")?))
+                opts.reports = Some(PathBuf::from(
+                    args.next().ok_or("--reports needs a directory")?,
+                ))
             }
             "--tui" => opts.tui = true,
             other => return Err(format!("unknown argument {other}")),
@@ -162,7 +171,7 @@ fn report_directory(opts: &Options) -> (PathBuf, bool) {
     )
 }
 
-fn run_scan(opts: &Options) -> Result<Vec<Report>, String> {
+fn run_scan(opts: &Options, progress: &mut dyn FnMut(&str)) -> Result<Vec<Report>, String> {
     let refs = opts.refs.as_ref().ok_or("--refs is required")?;
     let targets = target_paths(opts)?;
     let (reports_dir, temporary) = report_directory(opts);
@@ -182,12 +191,11 @@ fn run_scan(opts: &Options) -> Result<Vec<Report>, String> {
         }
     }
 
-    println!(
+    progress(&format!(
         "Scanning {} package(s) with mode {} ...",
         targets.len(),
         opts.mode
-    );
-    io::stdout().flush().ok();
+    ));
     let mut command = Command::new(&opts.packguard);
     command
         .arg("--mode")
@@ -396,8 +404,8 @@ fn print_table(reports: &[Report], mode: &str) {
         reports.len()
     );
     println!(
-        "{:<44} {:<16} {:>8} {:>5} {:>7} {}",
-        "PACKAGE", "VERSION", "SCORE", "PRIM", "FLAGGED", "HITS"
+        "{:<44} {:<16} {:>8} {:>5} {:>7} HITS",
+        "PACKAGE", "VERSION", "SCORE", "PRIM", "FLAGGED"
     );
     println!("{}", "-".repeat(100));
     for report in reports {
@@ -428,98 +436,6 @@ fn print_table(reports: &[Report], mode: &str) {
     );
 }
 
-fn prompt(label: &str) -> Result<String, String> {
-    print!("{label}");
-    io::stdout().flush().map_err(|error| error.to_string())?;
-    let mut line = String::new();
-    io::stdin()
-        .read_line(&mut line)
-        .map_err(|error| error.to_string())?;
-    Ok(line.trim().to_string())
-}
-
-fn run_tui(mut opts: Options) -> Result<(), String> {
-    loop {
-        print!("\x1b[2J\x1b[H");
-        println!("PackGuard CLI - stage 1");
-        println!("Known mode needs benign references [5] for its veto; stage 2 filters the rest.\n");
-        println!("  [1] Mode:       {}", opts.mode);
-        println!(
-            "  [2] References: {}",
-            opts.refs
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "<not set>".to_string())
-        );
-        println!(
-            "  [3] Scan dir:   {}",
-            opts.scan_dir
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "<not set>".to_string())
-        );
-        println!(
-            "  [4] Packguard:  {}",
-            opts.packguard.display()
-        );
-        println!(
-            "  [5] Benign refs: {}",
-            opts.benign
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "<not set>".to_string())
-        );
-        println!("\n  [R] Run scan    [Q] Quit");
-        let choice = prompt("> ")?;
-        match choice.as_str() {
-            "1" => {
-                opts.mode = if opts.mode == "known" {
-                    "new".to_string()
-                } else {
-                    "known".to_string()
-                };
-            }
-            "2" => {
-                let value = prompt("references directory: ")?;
-                if !value.is_empty() {
-                    opts.refs = Some(PathBuf::from(value));
-                }
-            }
-            "3" => {
-                let value = prompt("scan directory: ")?;
-                if !value.is_empty() {
-                    opts.scan_dir = Some(PathBuf::from(value));
-                }
-            }
-            "4" => {
-                let value = prompt("packguard path: ")?;
-                if !value.is_empty() {
-                    opts.packguard = PathBuf::from(value);
-                }
-            }
-            "5" => {
-                let value = prompt("benign references directory: ")?;
-                if !value.is_empty() {
-                    opts.benign = Some(PathBuf::from(value));
-                }
-            }
-            "r" | "R" => match run_scan(&opts) {
-                Ok(reports) => {
-                    print_table(&reports, &opts.mode);
-                    prompt("Press Enter to continue")?;
-                }
-                Err(error) => {
-                    println!("\nError: {error}");
-                    prompt("Press Enter to continue")?;
-                }
-            },
-            "q" | "Q" => break,
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
 fn main() {
     let opts = match parse_args() {
         Ok(opts) => opts,
@@ -530,9 +446,10 @@ fn main() {
         }
     };
     let result = if opts.tui {
-        run_tui(opts)
+        tui::run(opts)
     } else {
-        run_scan(&opts).map(|reports| print_table(&reports, &opts.mode))
+        run_scan(&opts, &mut |line| println!("{line}"))
+            .map(|reports| print_table(&reports, &opts.mode))
     };
     if let Err(error) = result {
         eprintln!("packguard-cli: {error}");
@@ -593,5 +510,15 @@ mod tests {
     fn truncates_long_names() {
         assert_eq!(truncate("abcdefghij", 5), "abcd~");
         assert_eq!(truncate("abc", 5), "abc");
+    }
+
+    #[test]
+    fn default_scanner_is_resolved_from_path() {
+        let expected = if cfg!(windows) {
+            PathBuf::from("packguard.exe")
+        } else {
+            PathBuf::from("packguard")
+        };
+        assert_eq!(default_packguard(), expected);
     }
 }

