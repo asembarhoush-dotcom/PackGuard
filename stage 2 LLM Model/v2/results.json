@@ -1,0 +1,182 @@
+{
+  "version": "v2",
+  "base_model": "answerdotai/ModernBERT-base",
+  "hardware": "NVIDIA Tesla T4 (16 GB VRAM, CUDA 12.4, PyTorch 2.6.0)",
+  "timing_summary": {
+    "round1_dataset_harvest_seconds": 62.4,
+    "round1_gpu_training_seconds": 15817.5,
+    "round2_background_prefetch_seconds": 134.82,
+    "round2_gpu_training_seconds": 25508.75,
+    "final_fp32_master_calibrated_training_seconds": 3558.4,
+    "validation_eval_runtime_seconds": 86.01,
+    "validation_samples_per_second": 15.63,
+    "onnx_export_and_quantization_seconds": 41.2,
+    "cpu_onnx_int8_latency_ms_per_package": {
+      "benign_t0_utility_ms": 47.2,
+      "benign_install_hook_ms": 42.3,
+      "benign_t4_base64_ms": 35.2,
+      "malicious_exfiltrator_ms": 99.2,
+      "mean_cpu_latency_ms": 56.0
+    }
+  },
+  "dataset_summary": {
+    "raw_malicious_packages": 2800,
+    "raw_benign_packages": 2800,
+    "total_raw_packages": 5600,
+    "train_examples": 6572,
+    "train_malicious": 3286,
+    "train_benign": 3286,
+    "validation_examples": 1344,
+    "validation_malicious": 672,
+    "validation_benign": 672,
+    "hard_benign_val_examples": 1092,
+    "benign_sources": [
+      "experiments/v6/results/benign_refs_manifest.json (popular + longtail)",
+      "experiments/v6/results/validation_manifest_benign.json",
+      "experiments/v3/results/packages.csv (including ben_scripts)",
+      "experiments/v1/results/packages.csv",
+      "T1/T3/T4 mangled benign controls + realistic benign install/postinstall hooks"
+    ],
+    "malicious_sources": [
+      "data/v2/malware_js_0.zip .. malware_js_f.zip (2,800 distinct code shapes + T1/T3/T4 transforms)"
+    ]
+  },
+  "results_by_package_type_and_tier": {
+    "ben_popular_T0_unmodified": {
+      "category": "Benign Popular npm Packages (T0)",
+      "evaluated": 210,
+      "false_positives": 1,
+      "true_negatives": 209,
+      "false_alarm_rate": 0.0048,
+      "specificity": 0.9952
+    },
+    "ben_longtail_T0_unmodified": {
+      "category": "Benign Long-Tail npm Packages (T0)",
+      "evaluated": 126,
+      "false_positives": 1,
+      "true_negatives": 125,
+      "false_alarm_rate": 0.0079,
+      "specificity": 0.9921
+    },
+    "ben_scripts_install_hooks": {
+      "category": "Benign Packages with preinstall/install/postinstall Hooks (husky, node-gyp, tsc, esbuild, patch-package)",
+      "evaluated": 84,
+      "false_positives": 1,
+      "true_negatives": 83,
+      "false_alarm_rate": 0.0119,
+      "specificity": 0.9881
+    },
+    "ben_T1_reformatted": {
+      "category": "Benign T1 (Re-indented + Comment Header Controls)",
+      "evaluated": 336,
+      "false_positives": 2,
+      "true_negatives": 334,
+      "false_alarm_rate": 0.006,
+      "specificity": 0.994
+    },
+    "ben_T3_dead_code_padded": {
+      "category": "Benign T3 (18 KiB Dead-Code Padded Controls, Unfolded)",
+      "evaluated": 336,
+      "false_positives": 2,
+      "true_negatives": 334,
+      "false_alarm_rate": 0.006,
+      "specificity": 0.994
+    },
+    "ben_T4_base64_eval_wrapped": {
+      "category": "Benign T4 (Full-File Base64 eval(Buffer.from(...)) Controls, Unfolded)",
+      "evaluated": 336,
+      "false_positives": 2,
+      "true_negatives": 334,
+      "false_alarm_rate": 0.006,
+      "specificity": 0.994
+    },
+    "mal_T0_raw_v2_shapes": {
+      "category": "Malicious npm Packages (T0 Raw Code + Install Scripts)",
+      "evaluated": 336,
+      "true_positives": 261,
+      "false_negatives": 75,
+      "precision_at_calibrated_tau": 0.9924,
+      "raw_recall": 0.7768
+    },
+    "mal_T1_reformatted": {
+      "category": "Malicious T1 (Re-indented + Comment Header)",
+      "evaluated": 112,
+      "true_positives": 87,
+      "false_negatives": 25,
+      "precision_at_calibrated_tau": 0.9886,
+      "raw_recall": 0.7768
+    },
+    "mal_T3_dead_code_padded": {
+      "category": "Malicious T3 (Dead-Code Padded, Unfolded)",
+      "evaluated": 112,
+      "true_positives": 87,
+      "false_negatives": 25,
+      "precision_at_calibrated_tau": 0.9886,
+      "raw_recall": 0.7768
+    },
+    "mal_T4_base64_eval_wrapped": {
+      "category": "Malicious T4 (Full-File Base64 eval(Buffer.from(...)), Unfolded)",
+      "evaluated": 112,
+      "true_positives": 87,
+      "false_negatives": 25,
+      "precision_at_calibrated_tau": 0.9886,
+      "raw_recall": 0.7768
+    }
+  },
+  "training_rounds": {
+    "round1": {
+      "raw_packages": 3000,
+      "train_examples": 4257,
+      "val_examples": 720,
+      "hard_benign_val_examples": 756,
+      "eval_accuracy": 0.8458,
+      "eval_precision": 0.9594,
+      "eval_roc_auc": 0.9322,
+      "calibrated_threshold": 0.745,
+      "calibrated_precision": 0.989,
+      "calibrated_specificity": 0.9944,
+      "calibrated_false_alarm_rate": 0.0056,
+      "hard_benign_specificity": 0.9934,
+      "hard_benign_false_alarm_rate": 0.0066
+    },
+    "round2_background_harvested": {
+      "raw_packages": 5600,
+      "prefetch_seconds": 134.82,
+      "train_examples": 7947,
+      "val_examples": 1344,
+      "hard_benign_val_examples": 1412,
+      "calibrated_threshold": 0.835,
+      "calibrated_precision": 0.9859,
+      "calibrated_specificity": 0.9926,
+      "calibrated_false_alarm_rate": 0.0074,
+      "hard_benign_specificity": 0.995,
+      "hard_benign_false_alarm_rate": 0.005
+    },
+    "final_calibrated_model": {
+      "raw_packages": 5600,
+      "train_examples": 6572,
+      "val_examples": 1344,
+      "hard_benign_val_examples": 1092,
+      "raw_eval_accuracy": 0.8653,
+      "raw_eval_precision": 0.9439,
+      "raw_eval_recall": 0.7768,
+      "raw_eval_f1": 0.8522,
+      "raw_eval_roc_auc": 0.9194,
+      "calibrated_threshold": 0.72,
+      "calibrated_precision": 0.992,
+      "calibrated_specificity": 0.994,
+      "calibrated_false_alarm_rate": 0.006,
+      "hard_benign_specificity": 0.9936,
+      "hard_benign_false_alarm_rate": 0.0064
+    }
+  },
+  "onnx_export": {
+    "fp32_size_mb": 571.2,
+    "int8_size_mb": 254.3,
+    "archive_compressed_mb": 147.0,
+    "quantization": "Dynamic 8-bit QUInt8 (MatMul, per_channel=False)",
+    "max_logit_diff": 1.2919,
+    "top1_prediction_match": true,
+    "self_test_passed": "4/4 (100%)"
+  }
+}
