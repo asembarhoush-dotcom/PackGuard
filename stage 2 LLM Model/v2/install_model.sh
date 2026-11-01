@@ -31,9 +31,9 @@ else
 fi
 
 # 2. Install lightweight CPU inference dependencies (no heavy PyTorch needed!)
-echo "[2/4] Installing lightweight CPU dependencies (onnxruntime, transformers, numpy)..."
+echo "[2/4] Installing lightweight CPU dependencies (onnxruntime, tokenizers, transformers, numpy)..."
 "$VENV_DIR/bin/pip" install --upgrade pip -q
-"$VENV_DIR/bin/pip" install onnxruntime transformers numpy -q
+"$VENV_DIR/bin/pip" install onnxruntime tokenizers transformers numpy -q
 
 # 3. Download & extract pre-trained INT8 ONNX model if not already present
 mkdir -p "$MODEL_DIR"

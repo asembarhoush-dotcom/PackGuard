@@ -28,9 +28,9 @@ if (-not (Test-Path $VenvDir)) {
 $PipExe = Join-Path $VenvDir "Scripts\pip.exe"
 $PyExe = Join-Path $VenvDir "Scripts\python.exe"
 
-Write-Host "[2/4] Installing lightweight CPU dependencies (onnxruntime, transformers, numpy)..."
+Write-Host "[2/4] Installing lightweight CPU dependencies (onnxruntime, tokenizers, transformers, numpy)..."
 & $PipExe install --upgrade pip -q
-& $PipExe install onnxruntime transformers numpy -q
+& $PipExe install onnxruntime tokenizers transformers numpy -q
 
 New-Item -ItemType Directory -Force -Path $ModelDir | Out-Null
 $OnnxFile = Join-Path $ModelDir "packguard_modernbert_v2_int8.onnx"
