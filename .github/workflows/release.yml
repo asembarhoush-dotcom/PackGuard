@@ -1,0 +1,231 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish as a release, for example v0.1.0 (leave empty to build without releasing)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  XZ_VERSION: "5.8.3"
+  XZ_SHA256: "3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0"
+
+jobs:
+  linux:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake pkg-config
+
+      - name: Build static liblzma
+        run: |
+          set -euo pipefail
+          curl -fsSL -o xz.tar.gz "https://github.com/tukaani-project/xz/releases/download/v${XZ_VERSION}/xz-${XZ_VERSION}.tar.gz"
+          echo "${XZ_SHA256}  xz.tar.gz" | sha256sum -c -
+          tar -xzf xz.tar.gz
+          cmake -S "xz-${XZ_VERSION}" -B build/xz \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/xz-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DXZ_NLS=OFF \
+            -DXZ_THREADS=no \
+            -DXZ_DOC=OFF \
+            -DXZ_TOOL_XZ=OFF \
+            -DXZ_TOOL_XZDEC=OFF \
+            -DXZ_TOOL_LZMADEC=OFF \
+            -DXZ_TOOL_LZMAINFO=OFF \
+            -DXZ_TOOL_SCRIPTS=OFF \
+            -DXZ_TOOL_SYMLINKS=OFF \
+            -DXZ_TOOL_SYMLINKS_LZMA=OFF
+          cmake --build build/xz --target liblzma --parallel
+          cmake --install build/xz --component liblzma_Development || cmake --install build/xz
+          test -f build/xz-install/lib/liblzma.a
+
+      - name: Build packguard
+        run: |
+          make -j"$(nproc)" \
+            LZMA_LIBDIR="$PWD/build/xz-install/lib" \
+            CPPFLAGS="-I$PWD/build/xz-install/include -DLZMA_API_STATIC"
+
+      - name: Build packguard-cli
+        run: cargo build --release --locked --manifest-path frontend/Cargo.toml
+
+      - name: Smoke test
+        run: |
+          build/packguard -h > /dev/null
+          frontend/target/release/packguard-cli > /dev/null 2>&1 || test $? -eq 2
+
+      - name: Package
+        run: |
+          mkdir -p dist/package
+          cp build/packguard frontend/target/release/packguard-cli LICENSE.txt README.md dist/package/
+          tar -czf dist/packguard-linux-x86_64.tar.gz -C dist/package packguard packguard-cli LICENSE.txt README.md
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: packguard-linux-x86_64
+          path: dist/packguard-linux-x86_64.tar.gz
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Install GNU Make
+        run: choco install make --no-progress -y
+
+      - name: Install zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      - name: Build packguard
+        run: ./scripts/build-windows.ps1 -Clean
+
+      - name: Build packguard-cli
+        run: cargo build --release --locked --manifest-path frontend/Cargo.toml
+
+      - name: Smoke test
+        run: |
+          ./build/packguard.exe -h | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "packguard exited with $LASTEXITCODE instead of 0" }
+          ./frontend/target/release/packguard-cli.exe | Out-Null
+          if ($LASTEXITCODE -ne 2) { throw "packguard-cli exited with $LASTEXITCODE instead of 2" }
+          exit 0
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory -Force dist/stage | Out-Null
+          Copy-Item build/packguard.exe, frontend/target/release/packguard-cli.exe, LICENSE.txt, README.md dist/stage/
+          Compress-Archive -Path dist/stage/* -DestinationPath dist/packguard-windows-x86_64.zip
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: packguard-windows-x86_64
+          path: dist/packguard-windows-x86_64.zip
+
+  macos:
+    name: macOS universal2
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Build static liblzma
+        run: |
+          set -euo pipefail
+          curl -fsSL -o xz.tar.gz "https://github.com/tukaani-project/xz/releases/download/v${XZ_VERSION}/xz-${XZ_VERSION}.tar.gz"
+          echo "${XZ_SHA256}  xz.tar.gz" | shasum -a 256 -c -
+          tar -xzf xz.tar.gz
+          cmake -S "xz-${XZ_VERSION}" -B build/xz \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
+            -DCMAKE_INSTALL_PREFIX="$PWD/build/xz-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DXZ_NLS=OFF \
+            -DXZ_THREADS=no \
+            -DXZ_DOC=OFF \
+            -DXZ_TOOL_XZ=OFF \
+            -DXZ_TOOL_XZDEC=OFF \
+            -DXZ_TOOL_LZMADEC=OFF \
+            -DXZ_TOOL_LZMAINFO=OFF \
+            -DXZ_TOOL_SCRIPTS=OFF \
+            -DXZ_TOOL_SYMLINKS=OFF \
+            -DXZ_TOOL_SYMLINKS_LZMA=OFF
+          cmake --build build/xz --target liblzma --parallel
+          cmake --install build/xz --component liblzma_Development || cmake --install build/xz
+          test -f build/xz-install/lib/liblzma.a
+
+      - name: Build packguard
+        env:
+          CFLAGS: "-std=c17 -O2 -Wall -Wextra -Wpedantic -arch arm64 -arch x86_64"
+          CPPFLAGS: "-I${{ github.workspace }}/build/xz-install/include -DLZMA_API_STATIC"
+          LDFLAGS: "-arch arm64 -arch x86_64"
+        run: |
+          make -j"$(sysctl -n hw.logicalcpu)" LZMA_LIBDIR="$PWD/build/xz-install/lib"
+          lipo -info build/packguard
+
+      - name: Build packguard-cli
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --locked --manifest-path frontend/Cargo.toml --target aarch64-apple-darwin
+          cargo build --release --locked --manifest-path frontend/Cargo.toml --target x86_64-apple-darwin
+          mkdir -p dist/package
+          lipo -create \
+            frontend/target/aarch64-apple-darwin/release/packguard-cli \
+            frontend/target/x86_64-apple-darwin/release/packguard-cli \
+            -output dist/package/packguard-cli
+
+      - name: Smoke test
+        run: |
+          build/packguard -h > /dev/null
+          dist/package/packguard-cli > /dev/null 2>&1 || test $? -eq 2
+          lipo -info build/packguard | grep -q arm64
+          lipo -info build/packguard | grep -q x86_64
+          lipo -info dist/package/packguard-cli | grep -q arm64
+          lipo -info dist/package/packguard-cli | grep -q x86_64
+          otool -l build/packguard | grep minos
+          file build/packguard dist/package/packguard-cli
+
+      - name: Package
+        run: |
+          cp build/packguard LICENSE.txt README.md dist/package/
+          tar -czf dist/packguard-macos-universal2.tar.gz -C dist/package packguard packguard-cli LICENSE.txt README.md
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: packguard-macos-universal2
+          path: dist/packguard-macos-universal2.tar.gz
+
+  release:
+    name: Publish release
+    needs:
+      - linux
+      - windows
+      - macos
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write checksums
+        run: cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+          fi
