@@ -14,8 +14,7 @@ cd "$SCRIPT_DIR"
 VENV_DIR="$SCRIPT_DIR/.venv-stage2"
 MODEL_DIR="$SCRIPT_DIR/model_int8"
 ONNX_ARCHIVE="$SCRIPT_DIR/packguard-modernbert-v2-onnx.tar.gz"
-ONNX_PART1_URL="https://n.uguu.se/zHuNPGmY"
-ONNX_PART2_URL="https://d.uguu.se/wDCGaCxO"
+ONNX_URL="https://github.com/asembarhoush-dotcom/PackGuard/releases/download/v2.0-model/packguard-modernbert-v2-onnx.tar.gz"
 ONNX_GOFILE_PAGE="https://gofile.io/d/w81spJ2a"
 
 echo "=================================================================="
@@ -40,14 +39,11 @@ mkdir -p "$MODEL_DIR"
 if [ ! -f "$MODEL_DIR/packguard_modernbert_v2_int8.onnx" ]; then
     if [ ! -f "$ONNX_ARCHIVE" ]; then
         echo "[3/4] Downloading pre-trained ModernBERT v2 INT8 ONNX bundle (147 MB)..."
-        if curl -L --fail --retry 3 -o "${ONNX_ARCHIVE}.part1" "$ONNX_PART1_URL" && \
-           curl -L --fail --retry 3 -o "${ONNX_ARCHIVE}.part2" "$ONNX_PART2_URL"; then
-            cat "${ONNX_ARCHIVE}.part1" "${ONNX_ARCHIVE}.part2" > "$ONNX_ARCHIVE"
-            rm -f "${ONNX_ARCHIVE}.part1" "${ONNX_ARCHIVE}.part2"
-        else
-            echo "ERROR: Direct CLI mirror expired. Please download packguard-modernbert-v2-onnx.tar.gz from:"
+        if ! curl -L --fail --retry 3 -o "$ONNX_ARCHIVE" "$ONNX_URL"; then
+            echo "ERROR: Failed to download model from GitHub Release."
+            echo "Alternative browser mirror:"
             echo "  $ONNX_GOFILE_PAGE"
-            echo "and place it at: $ONNX_ARCHIVE"
+            echo "Place the downloaded archive at: $ONNX_ARCHIVE"
             exit 1
         fi
     fi
