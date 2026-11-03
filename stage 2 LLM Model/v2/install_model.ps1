@@ -10,8 +10,7 @@ Set-Location $ScriptDir
 $VenvDir = Join-Path $ScriptDir ".venv-stage2"
 $ModelDir = Join-Path $ScriptDir "model_int8"
 $OnnxArchive = Join-Path $ScriptDir "packguard-modernbert-v2-onnx.tar.gz"
-$Part1Url = "https://n.uguu.se/zHuNPGmY"
-$Part2Url = "https://d.uguu.se/wDCGaCxO"
+$OnnxUrl = "https://github.com/asembarhoush-dotcom/PackGuard/releases/download/v2.0-model/packguard-modernbert-v2-onnx.tar.gz"
 $GofilePage = "https://gofile.io/d/w81spJ2a"
 
 Write-Host "=================================================================="
@@ -38,12 +37,7 @@ $OnnxFile = Join-Path $ModelDir "packguard_modernbert_v2_int8.onnx"
 if (-not (Test-Path $OnnxFile)) {
     if (-not (Test-Path $OnnxArchive)) {
         Write-Host "[3/4] Downloading pre-trained ModernBERT v2 INT8 ONNX bundle (147 MB)..."
-        $P1 = "$OnnxArchive.part1"
-        $P2 = "$OnnxArchive.part2"
-        curl.exe -L --fail --retry 3 -o $P1 $Part1Url
-        curl.exe -L --fail --retry 3 -o $P2 $Part2Url
-        cmd.exe /c "copy /b `"$P1`"+`"$P2`" `"$OnnxArchive`" >nul"
-        Remove-Item -Force $P1, $P2 -ErrorAction SilentlyContinue
+        curl.exe -L --fail --retry 3 -o $OnnxArchive $OnnxUrl
     }
     Write-Host "      Extracting model into $ModelDir ..."
     tar -xzf $OnnxArchive -C $ModelDir

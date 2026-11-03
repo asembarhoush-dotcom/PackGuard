@@ -24,17 +24,14 @@ powershell -ExecutionPolicy Bypass -File "stage 2 LLM Model\v2\install_model.ps1
 
 | Artifact | Format | Size | SHA-256 Checksum | Download Link |
 |---|---|---|---|---|
-| **`packguard-modernbert-v2-onnx.tar.gz`** | 8-bit Quantized ONNX (`QUInt8` CPU Runtime + Tokenizer + Calibrated Threshold) | `147 MB` | `2a5c8029dc360f2f91327a280034b1ec4875814ed0103e245766781365529792` | **Browser / Gofile:** [https://gofile.io/d/w81spJ2a](https://gofile.io/d/w81spJ2a)<br>**Direct `curl` Part 1:** `https://n.uguu.se/zHuNPGmY`<br>**Direct `curl` Part 2:** `https://d.uguu.se/wDCGaCxO` |
+| **`packguard-modernbert-v2-onnx.tar.gz`** | 8-bit Quantized ONNX (`QUInt8` CPU Runtime + Tokenizer + Calibrated Threshold) | `147 MB` | `2a5c8029dc360f2f91327a280034b1ec4875814ed0103e245766781365529792` | **GitHub Release CDN (Direct):** [Download Archive](https://github.com/asembarhoush-dotcom/PackGuard/releases/download/v2.0-model/packguard-modernbert-v2-onnx.tar.gz)<br>**Browser / Gofile Mirror:** [https://gofile.io/d/w81spJ2a](https://gofile.io/d/w81spJ2a) |
 | **`packguard-modernbert-v2-pytorch.tar.gz`** | Full PyTorch Safetensors Checkpoint (`model.safetensors` + Tokenizer + Config) | `228 MB` | `d49d4635ddfae9e4c0b1284041ced41c40a73c8524d0cd79e40f5658614b8bde` | **Browser / Gofile:** [https://gofile.io/d/V3vbJvCu](https://gofile.io/d/V3vbJvCu) |
 
 ### Manual CLI Download & Extraction (ONNX INT8 Bundle)
 ```bash
 cd "stage 2 LLM Model/v2"
 mkdir -p model_int8
-curl -L -o part1 https://n.uguu.se/zHuNPGmY
-curl -L -o part2 https://d.uguu.se/wDCGaCxO
-cat part1 part2 > packguard-modernbert-v2-onnx.tar.gz
-rm -f part1 part2
+curl -L -o packguard-modernbert-v2-onnx.tar.gz https://github.com/asembarhoush-dotcom/PackGuard/releases/download/v2.0-model/packguard-modernbert-v2-onnx.tar.gz
 sha256sum packguard-modernbert-v2-onnx.tar.gz
 # Expected: 2a5c8029dc360f2f91327a280034b1ec4875814ed0103e245766781365529792
 tar -xzf packguard-modernbert-v2-onnx.tar.gz -C model_int8
