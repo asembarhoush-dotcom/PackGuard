@@ -14,6 +14,7 @@ RE_EVAL_BASE64_WRAPPER = re.compile(
 RE_INLINE_BASE64 = re.compile(
     r'(?:Buffer\.from\s*\(\s*["\']([A-Za-z0-9+/=]{24,})["\']\s*,\s*["\']base64["\']\s*\)|atob\s*\(\s*["\']([A-Za-z0-9+/=]{24,})["\']\s*\))'
 )
+RE_REPEATED_OBF_TOKEN = re.compile(r"([^\s()[\]{}.,;:=+\-*/\"'`]{5,24}?)\1{2,}")
 
 
 def _try_decode_base64_utf8(b64_str: str) -> str:
@@ -72,9 +73,10 @@ def clean_and_unfold_js(text: str) -> str:
             if decoded and decoded not in text and decoded not in inline_decoded:
                 inline_decoded.append(decoded[:4096])
 
-    # Step 3: Remove T3 dead-code padding functions and T1/T3 header markers
+    # Step 3: Remove T3 dead-code padding functions, repeated obfuscator prefixes, and T1/T3 header markers
     text = RE_PADDED_HEADER.sub("", text)
     text = RE_PG_PAD_FUNC.sub("", text)
+    text = RE_REPEATED_OBF_TOKEN.sub(r"\1", text)
 
     if RE_REFORMATTED_HEADER.search(text):
         text = RE_REFORMATTED_HEADER.sub("", text)
@@ -153,7 +155,11 @@ def format_scanner_chunks_to_text(record: Dict[str, Any]) -> str:
        code regions always sit at the start of the 8,192-token context window.
     """
     if "text" in record and isinstance(record["text"], str) and "chunks" not in record:
-        return record["text"]
+        raw_txt = record["text"]
+        if str(record.get("tier", "")).endswith("_raw") or raw_txt.startswith("// ["):
+            return raw_txt
+        cleaned = clean_and_unfold_js(raw_txt)
+        return cleaned if cleaned else raw_txt
 
     chunks = record.get("chunks") or []
     if not chunks:

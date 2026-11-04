@@ -1,182 +1,315 @@
 {
   "version": "v2",
   "base_model": "answerdotai/ModernBERT-base",
-  "hardware": "NVIDIA Tesla T4 (16 GB VRAM, CUDA 12.4, PyTorch 2.6.0)",
+  "hardware": "NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB VRAM, sm_120, 48 vCPUs, CUDA 12.9, PyTorch 2.9.1+cu129)",
+  "precision_mode": "Native bfloat16 + TF32 (Blackwell Tensor Cores)",
   "timing_summary": {
-    "round1_dataset_harvest_seconds": 62.4,
-    "round1_gpu_training_seconds": 15817.5,
-    "round2_background_prefetch_seconds": 134.82,
-    "round2_gpu_training_seconds": 25508.75,
-    "final_fp32_master_calibrated_training_seconds": 3558.4,
-    "validation_eval_runtime_seconds": 86.01,
-    "validation_samples_per_second": 15.63,
-    "onnx_export_and_quantization_seconds": 41.2,
+    "dataset_harvest_and_download_seconds": 168.4,
+    "suspicion_ranked_jsonl_build_seconds": 25.2,
+    "rtx_pro_6000_bf16_training_seconds": 395.76,
+    "validation_and_hard_benign_eval_seconds": 9.88,
+    "validation_samples_per_second": 603.33,
+    "onnx_export_and_int8_quantization_seconds": 25.63,
+    "total_pipeline_wall_seconds": 421.39,
     "cpu_onnx_int8_latency_ms_per_package": {
-      "benign_t0_utility_ms": 47.2,
-      "benign_install_hook_ms": 42.3,
-      "benign_t4_base64_ms": 35.2,
-      "malicious_exfiltrator_ms": 99.2,
-      "mean_cpu_latency_ms": 56.0
+      "benign_t0_utility_ms": 13.8,
+      "benign_install_hook_ms": 12.8,
+      "benign_t4_base64_ms": 10.5,
+      "malicious_exfiltrator_ms": 28.3,
+      "mean_cpu_latency_ms": 16.35
     }
   },
   "dataset_summary": {
-    "raw_malicious_packages": 2800,
-    "raw_benign_packages": 2800,
-    "total_raw_packages": 5600,
-    "train_examples": 6572,
-    "train_malicious": 3286,
-    "train_benign": 3286,
-    "validation_examples": 1344,
-    "validation_malicious": 672,
-    "validation_benign": 672,
-    "hard_benign_val_examples": 1092,
+    "raw_malicious_packages": 4500,
+    "raw_benign_packages": 5876,
+    "total_raw_packages": 10376,
+    "train_examples": 21693,
+    "train_malicious": 9885,
+    "train_benign": 11808,
+    "validation_examples": 2944,
+    "validation_malicious": 1348,
+    "validation_benign": 1596,
+    "hard_benign_val_examples": 3140,
     "benign_sources": [
       "experiments/v6/results/benign_refs_manifest.json (popular + longtail)",
       "experiments/v6/results/validation_manifest_benign.json",
       "experiments/v3/results/packages.csv (including ben_scripts)",
       "experiments/v1/results/packages.csv",
-      "T1/T3/T4 mangled benign controls + realistic benign install/postinstall hooks"
+      "1,200 live npm registry hard-benign packages (CLI, child-process, webpack, esbuild, postinstall, node-gyp, crypto)",
+      "All 5 tiers (T0, T1, T2 identifier/string mangled, T3 dead-code padded, T4 base64 eval wrapped) + raw unformatted mode"
     ],
     "malicious_sources": [
-      "data/v2/malware_js_0.zip .. malware_js_f.zip (2,800 distinct code shapes + T1/T3/T4 transforms)"
+      "data/v2/malware_js_0.zip .. malware_js_f.zip + data/v1/malware_js_0.zip .. malware_js_f.zip (4,500 unique malicious packages across T0, T1, T2, T3, T4, and raw unformatted mode)"
     ]
   },
-  "results_by_package_type_and_tier": {
-    "ben_popular_T0_unmodified": {
-      "category": "Benign Popular npm Packages (T0)",
-      "evaluated": 210,
-      "false_positives": 1,
-      "true_negatives": 209,
-      "false_alarm_rate": 0.0048,
-      "specificity": 0.9952
+  "overall_metrics": {
+    "raw_eval_at_pre_bake_0_50": {
+      "eval_loss": 0.190146,
+      "eval_accuracy": 0.896739,
+      "eval_precision": 0.979779,
+      "eval_recall": 0.790801,
+      "eval_f1": 0.875205,
+      "eval_false_alarm_rate": 0.013784,
+      "eval_specificity": 0.986216,
+      "eval_roc_auc": 0.963669,
+      "true_positives": 1066,
+      "false_positives": 22,
+      "true_negatives": 1574,
+      "false_negatives": 282
     },
-    "ben_longtail_T0_unmodified": {
-      "category": "Benign Long-Tail npm Packages (T0)",
-      "evaluated": 126,
-      "false_positives": 1,
-      "true_negatives": 125,
-      "false_alarm_rate": 0.0079,
-      "specificity": 0.9921
-    },
-    "ben_scripts_install_hooks": {
-      "category": "Benign Packages with preinstall/install/postinstall Hooks (husky, node-gyp, tsc, esbuild, patch-package)",
-      "evaluated": 84,
-      "false_positives": 1,
-      "true_negatives": 83,
-      "false_alarm_rate": 0.0119,
-      "specificity": 0.9881
-    },
-    "ben_T1_reformatted": {
-      "category": "Benign T1 (Re-indented + Comment Header Controls)",
-      "evaluated": 336,
-      "false_positives": 2,
-      "true_negatives": 334,
-      "false_alarm_rate": 0.006,
-      "specificity": 0.994
-    },
-    "ben_T3_dead_code_padded": {
-      "category": "Benign T3 (18 KiB Dead-Code Padded Controls, Unfolded)",
-      "evaluated": 336,
-      "false_positives": 2,
-      "true_negatives": 334,
-      "false_alarm_rate": 0.006,
-      "specificity": 0.994
-    },
-    "ben_T4_base64_eval_wrapped": {
-      "category": "Benign T4 (Full-File Base64 eval(Buffer.from(...)) Controls, Unfolded)",
-      "evaluated": 336,
-      "false_positives": 2,
-      "true_negatives": 334,
-      "false_alarm_rate": 0.006,
-      "specificity": 0.994
-    },
-    "mal_T0_raw_v2_shapes": {
-      "category": "Malicious npm Packages (T0 Raw Code + Install Scripts)",
-      "evaluated": 336,
-      "true_positives": 261,
-      "false_negatives": 75,
-      "precision_at_calibrated_tau": 0.9924,
-      "raw_recall": 0.7768
-    },
-    "mal_T1_reformatted": {
-      "category": "Malicious T1 (Re-indented + Comment Header)",
-      "evaluated": 112,
-      "true_positives": 87,
-      "false_negatives": 25,
-      "precision_at_calibrated_tau": 0.9886,
-      "raw_recall": 0.7768
-    },
-    "mal_T3_dead_code_padded": {
-      "category": "Malicious T3 (Dead-Code Padded, Unfolded)",
-      "evaluated": 112,
-      "true_positives": 87,
-      "false_negatives": 25,
-      "precision_at_calibrated_tau": 0.9886,
-      "raw_recall": 0.7768
-    },
-    "mal_T4_base64_eval_wrapped": {
-      "category": "Malicious T4 (Full-File Base64 eval(Buffer.from(...)), Unfolded)",
-      "evaluated": 112,
-      "true_positives": 87,
-      "false_negatives": 25,
-      "precision_at_calibrated_tau": 0.9886,
-      "raw_recall": 0.7768
+    "calibrated_and_baked_into_classifier_bias": {
+      "pre_bake_optimal_threshold": 0.616,
+      "baked_bias_delta": 0.472604,
+      "post_bake_threshold": 0.5,
+      "accuracy": 0.889606,
+      "precision": 0.99325,
+      "recall": 0.764095,
+      "f1": 0.863732,
+      "false_alarm_rate": 0.004386,
+      "specificity": 0.995614,
+      "hard_benign_false_alarm_rate": 0.006051,
+      "hard_benign_specificity": 0.993949,
+      "true_positives": 1030,
+      "false_positives": 7,
+      "true_negatives": 1589,
+      "false_negatives": 318,
+      "hard_benign_total": 3140,
+      "hard_benign_false_positives": 19
     }
   },
-  "training_rounds": {
-    "round1": {
-      "raw_packages": 3000,
-      "train_examples": 4257,
-      "val_examples": 720,
-      "hard_benign_val_examples": 756,
-      "eval_accuracy": 0.8458,
-      "eval_precision": 0.9594,
-      "eval_roc_auc": 0.9322,
-      "calibrated_threshold": 0.745,
-      "calibrated_precision": 0.989,
-      "calibrated_specificity": 0.9944,
-      "calibrated_false_alarm_rate": 0.0056,
-      "hard_benign_specificity": 0.9934,
-      "hard_benign_false_alarm_rate": 0.0066
+  "per_category_and_tier_breakdown": {
+    "ben_popular": {
+      "type": "benign",
+      "total": 243,
+      "false_positives": 3,
+      "true_negatives": 240,
+      "false_alarm_rate": 0.012346,
+      "specificity": 0.987654
     },
-    "round2_background_harvested": {
-      "raw_packages": 5600,
-      "prefetch_seconds": 134.82,
-      "train_examples": 7947,
-      "val_examples": 1344,
-      "hard_benign_val_examples": 1412,
-      "calibrated_threshold": 0.835,
-      "calibrated_precision": 0.9859,
-      "calibrated_specificity": 0.9926,
-      "calibrated_false_alarm_rate": 0.0074,
-      "hard_benign_specificity": 0.995,
-      "hard_benign_false_alarm_rate": 0.005
+    "ben_longtail": {
+      "type": "benign",
+      "total": 118,
+      "false_positives": 0,
+      "true_negatives": 118,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
     },
-    "final_calibrated_model": {
-      "raw_packages": 5600,
-      "train_examples": 6572,
-      "val_examples": 1344,
-      "hard_benign_val_examples": 1092,
-      "raw_eval_accuracy": 0.8653,
-      "raw_eval_precision": 0.9439,
-      "raw_eval_recall": 0.7768,
-      "raw_eval_f1": 0.8522,
-      "raw_eval_roc_auc": 0.9194,
-      "calibrated_threshold": 0.72,
-      "calibrated_precision": 0.992,
-      "calibrated_specificity": 0.994,
-      "calibrated_false_alarm_rate": 0.006,
-      "hard_benign_specificity": 0.9936,
-      "hard_benign_false_alarm_rate": 0.0064
+    "ben_live_hard": {
+      "type": "benign",
+      "total": 113,
+      "false_positives": 0,
+      "true_negatives": 113,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "ben_scripts": {
+      "type": "benign",
+      "total": 165,
+      "false_positives": 0,
+      "true_negatives": 165,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "ben_T1": {
+      "type": "benign",
+      "total": 161,
+      "false_positives": 0,
+      "true_negatives": 161,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "ben_T2": {
+      "type": "benign",
+      "total": 159,
+      "false_positives": 4,
+      "true_negatives": 155,
+      "false_alarm_rate": 0.025157,
+      "specificity": 0.974843
+    },
+    "ben_T3": {
+      "type": "benign",
+      "total": 157,
+      "false_positives": 0,
+      "true_negatives": 157,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "ben_T4": {
+      "type": "benign",
+      "total": 158,
+      "false_positives": 0,
+      "true_negatives": 158,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "ben_raw": {
+      "type": "benign",
+      "total": 322,
+      "false_positives": 0,
+      "true_negatives": 322,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "mal_T0": {
+      "type": "malicious",
+      "total": 539,
+      "true_positives": 425,
+      "false_negatives": 114,
+      "recall": 0.788497
+    },
+    "mal_T1": {
+      "type": "malicious",
+      "total": 135,
+      "true_positives": 103,
+      "false_negatives": 32,
+      "recall": 0.762963
+    },
+    "mal_T2": {
+      "type": "malicious",
+      "total": 134,
+      "true_positives": 88,
+      "false_negatives": 46,
+      "recall": 0.656716
+    },
+    "mal_T3": {
+      "type": "malicious",
+      "total": 135,
+      "true_positives": 111,
+      "false_negatives": 24,
+      "recall": 0.822222
+    },
+    "mal_T4": {
+      "type": "malicious",
+      "total": 135,
+      "true_positives": 106,
+      "false_negatives": 29,
+      "recall": 0.785185
+    },
+    "mal_raw": {
+      "type": "malicious",
+      "total": 270,
+      "true_positives": 197,
+      "false_negatives": 73,
+      "recall": 0.72963
+    },
+    "tier_T0": {
+      "type": "mixed",
+      "total": 1178,
+      "true_positives": 425,
+      "false_positives": 3,
+      "true_negatives": 636,
+      "false_negatives": 114,
+      "recall": 0.788497,
+      "false_alarm_rate": 0.004695,
+      "specificity": 0.995305
+    },
+    "tier_T0_raw": {
+      "type": "mixed",
+      "total": 118,
+      "true_positives": 42,
+      "false_positives": 0,
+      "true_negatives": 64,
+      "false_negatives": 12,
+      "recall": 0.777778,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T1": {
+      "type": "mixed",
+      "total": 296,
+      "true_positives": 103,
+      "false_positives": 0,
+      "true_negatives": 161,
+      "false_negatives": 32,
+      "recall": 0.762963,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T1_raw": {
+      "type": "mixed",
+      "total": 118,
+      "true_positives": 42,
+      "false_positives": 0,
+      "true_negatives": 64,
+      "false_negatives": 12,
+      "recall": 0.777778,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T2": {
+      "type": "mixed",
+      "total": 293,
+      "true_positives": 88,
+      "false_positives": 4,
+      "true_negatives": 155,
+      "false_negatives": 46,
+      "recall": 0.656716,
+      "false_alarm_rate": 0.025157,
+      "specificity": 0.974843
+    },
+    "tier_T2_raw": {
+      "type": "mixed",
+      "total": 120,
+      "true_positives": 29,
+      "false_positives": 0,
+      "true_negatives": 66,
+      "false_negatives": 25,
+      "recall": 0.537037,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T3": {
+      "type": "mixed",
+      "total": 292,
+      "true_positives": 111,
+      "false_positives": 0,
+      "true_negatives": 157,
+      "false_negatives": 24,
+      "recall": 0.822222,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T3_raw": {
+      "type": "mixed",
+      "total": 118,
+      "true_positives": 43,
+      "false_positives": 0,
+      "true_negatives": 64,
+      "false_negatives": 11,
+      "recall": 0.796296,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T4": {
+      "type": "mixed",
+      "total": 293,
+      "true_positives": 106,
+      "false_positives": 0,
+      "true_negatives": 158,
+      "false_negatives": 29,
+      "recall": 0.785185,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
+    },
+    "tier_T4_raw": {
+      "type": "mixed",
+      "total": 118,
+      "true_positives": 41,
+      "false_positives": 0,
+      "true_negatives": 64,
+      "false_negatives": 13,
+      "recall": 0.759259,
+      "false_alarm_rate": 0.0,
+      "specificity": 1.0
     }
   },
   "onnx_export": {
-    "fp32_size_mb": 571.2,
+    "fp32_size_mb": 571.3,
     "int8_size_mb": 254.3,
-    "archive_compressed_mb": 147.0,
-    "quantization": "Dynamic 8-bit QUInt8 (MatMul, per_channel=False)",
-    "max_logit_diff": 1.2919,
-    "top1_prediction_match": true,
-    "self_test_passed": "4/4 (100%)"
+    "tar_gz_size_mb": 146.1,
+    "tar_gz_sha256": "e8bf700375bd827c487bcf9c4a37bc89dce5c3b7f52c3446f0cd1e6c7cf7c5b3",
+    "max_logit_diff": 0.4172,
+    "top1_match": true,
+    "self_test_passed": "4/4"
   }
 }
