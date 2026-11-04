@@ -31,7 +31,7 @@ from transformers import (
 from text_formatter import format_scanner_chunks_to_text
 
 MODEL_ID = "answerdotai/ModernBERT-base"
-MAX_SEQ_LENGTH = 512
+MAX_SEQ_LENGTH = 1024
 
 LABEL2ID = {"benign": 0, "clean": 0, "malicious": 1, "malware": 1}
 ID2LABEL = {0: "benign", 1: "malicious"}
@@ -120,9 +120,10 @@ def preprocess_dataset(
         processed[split_name] = split_ds.map(
             _tokenize_batch,
             batched=True,
-            num_proc=min(8, os.cpu_count() or 1) if os.name != "nt" else None,
+            batch_size=1024,
+            num_proc=min(32, os.cpu_count() or 1) if os.name != "nt" else None,
             remove_columns=split_ds.column_names,
-            desc=f"Tokenizing {split_name} (max_length={max_length})",
+            desc=f"Tokenizing {split_name} across CPU cores (max_length={max_length})",
         )
     return processed
 
@@ -526,6 +527,7 @@ def main() -> None:
     )
     warmup_steps = max(10, int(0.06 * total_train_steps))
 
+    num_dl_workers = min(16, os.cpu_count() or 1) if os.name != "nt" else 0
     training_args = TrainingArguments(
         output_dir=args.output_dir,
         num_train_epochs=args.epochs,
@@ -536,6 +538,7 @@ def main() -> None:
         weight_decay=0.01,
         warmup_steps=warmup_steps,
         lr_scheduler_type="cosine",
+        optim="adamw_torch_fused" if torch.cuda.is_available() else "adamw_torch",
         bf16=use_bf16,
         fp16=use_fp16,
         tf32=(torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8),
@@ -547,8 +550,10 @@ def main() -> None:
         greater_is_better=True,
         save_total_limit=2,
         logging_steps=20,
-        dataloader_num_workers=min(8, os.cpu_count() or 1) if os.name != "nt" else 0,
+        dataloader_num_workers=num_dl_workers,
         dataloader_pin_memory=torch.cuda.is_available(),
+        dataloader_persistent_workers=(num_dl_workers > 0),
+        dataloader_prefetch_factor=(4 if num_dl_workers > 0 else None),
         report_to="none",
         seed=args.seed,
     )
