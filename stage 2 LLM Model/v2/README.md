@@ -75,6 +75,33 @@ When `v1` and early `v2` were tested on Stage 1 flagged benign packages (`v4` / 
 | **`mal_raw` (Unformatted Direct Input)** | Raw unformatted malicious JS & chunks across `T0–T4` (`tier_T3_raw`: `79.6%`, `tier_T4_raw`: `75.9%`) | `270` | `197` | `73` | **`72.96%`** |
 | **All Validation Malware** | Combined held-out malware across `T0 / T1 / T2 / T3 / T4 / Raw` | `1,348` | `1,030` (`1,066` raw) | `318` | **`76.41%` (`79.08%` raw, `99.32%` precision)** |
 
+### C. Stage 1 `v6` (`experiments/v6`) + Stage 2 `v2` Two-Stage Benchmark Evaluation
+
+Evaluated directly against the **`v6` Test Set (`712` targets across `T1–T4`)** and **`v6` Validation Set (`960` targets across `T1–T4`)** from `experiments/v6/results/`:
+
+| `v6` Benchmark Split & Operating Mode | Stage 1 `v6` Benign False Alarms | Eliminated by Stage 2 `v2` | Remaining False Alarms (`Stage 1 + Stage 2`) | Combined Two-Stage Benign FPR | Combined Benign Specificity |
+|---|---:|---:|---:|---:|---:|
+| **`v6` Test Set (`-q 256`, `232` benign targets)** | `3 / 232` (`1.29%`) | **`3 / 3` (`100%`)** | **`0 / 232`** | **`0.00%`** | **`100.00%`** |
+| **`v6` Test Set (`-q 64` default, `232` benign targets)** | `5 / 232` (`2.16%`) | **`5 / 5` (`100%`)** | **`0 / 232`** | **`0.00%`** | **`100.00%`** |
+| **`v6` Validation Set (`480` benign targets)** | `15 / 480` (`3.13%`) | **`14 / 15` (`93.3%`)** | **`1 / 480`** | **`0.21%`** | **`99.79%`** |
+| **Total Across All `v6` Test + Validation (`712` benign targets)** | `20 / 712` (`2.81%`) | **`19 / 20` (`95.0%`)** | **`1 / 712`** | **`0.14%`** | **`99.86%`** |
+
+#### Exact Stage 1 `v6` False Alarms Filtered by Stage 2 `v2` (`19 / 20` Eliminated):
+- **`v6` Test Set (`5 / 5` Eliminated — `0.00%` Combined FPR):**
+  - `T1/ben_popular/mime-db@1.54.0` -> **`BENIGN`** (`prob = 0.0570`, `40.2 ms`)
+  - `T2/ben_popular/mime-db@1.54.0` -> **`BENIGN`** (`prob = 0.0682`, `42.1 ms`)
+  - `T2/ben_popular/hasown@2.0.2` -> **`BENIGN`** (`prob = 0.1589`, `55.4 ms`)
+  - `T4/ben_longtail/date-format-php@1.0.2` -> **`BENIGN`** (`prob = 0.2593`, `477.8 ms`)
+  - `T4/ben_longtail/ethiopic-date@1.0.4` -> **`BENIGN`** (`prob = 0.3726`, `317.0 ms`)
+- **`v6` Validation Set (`14 / 15` Eliminated — `0.21%` Combined FPR):**
+  - `T1, T2, T3, T4 / ben_longtail/react-intl-currency-input-fork@0.2.0` -> **`BENIGN`** (`prob = 0.3042–0.3222`)
+  - `T1, T2, T3, T4 / ben_longtail/vue-pretty-logger@0.9.0` -> **`BENIGN`** (`prob = 0.0981–0.2359`)
+  - `T1, T3, T4 / ben_popular/basic-auth@3.0.0` -> **`BENIGN`** (`prob = 0.2178`)
+  - `T3 / ben_popular/form-data-lite@1.0.4` -> **`BENIGN`** (`prob = 0.1613`)
+  - `T4 / ben_longtail/yaml-fm@0.1.3` -> **`BENIGN`** (`prob = 0.0500`)
+  - `T4 / ben_popular/robot3@1.4.0` -> **`BENIGN`** (`prob = 0.3799`)
+  - `T4 / ben_longtail/timezone-name-offsets@1.0.2` -> `MALICIOUS` (`prob = 0.6010`, only remaining false alarm out of 480 validation targets)
+
 ---
 
 ## 4. Training, Harvesting & Inference Timing Breakdown

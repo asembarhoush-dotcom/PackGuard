@@ -311,5 +311,60 @@
     "max_logit_diff": 0.4172,
     "top1_match": true,
     "self_test_passed": "4/4"
+  },
+  "v6_benchmark_evaluation": {
+    "stage1_v6_test_false_alarms_eliminated": {
+      "total_stage1_false_alarms_q64": 5,
+      "total_stage1_false_alarms_q256": 3,
+      "eliminated_by_stage2_v2_q64": 5,
+      "eliminated_by_stage2_v2_q256": 3,
+      "combined_v6_plus_stage2_v2_test_false_alarms": 0,
+      "combined_v6_plus_stage2_v2_test_fpr": 0.0,
+      "targets": [
+        { "target": "T1/ben_popular/mime-db@1.54.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.057, "eliminated": true },
+        { "target": "T2/ben_popular/mime-db@1.54.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.0682, "eliminated": true },
+        { "target": "T2/ben_popular/hasown@2.0.2", "stage2_verdict": "BENIGN", "malicious_prob": 0.1589, "eliminated": true },
+        { "target": "T4/ben_longtail/ethiopic-date@1.0.4", "stage2_verdict": "BENIGN", "malicious_prob": 0.3726, "eliminated": true },
+        { "target": "T4/ben_longtail/date-format-php@1.0.2", "stage2_verdict": "BENIGN", "malicious_prob": 0.2593, "eliminated": true }
+      ]
+    },
+    "stage1_v6_validation_false_alarms_eliminated": {
+      "total_stage1_false_alarms": 15,
+      "eliminated_by_stage2_v2": 14,
+      "remaining_false_alarms": 1,
+      "stage1_alone_val_fpr": 0.03125,
+      "combined_v6_plus_stage2_v2_val_fpr": 0.002083,
+      "targets": [
+        { "target": "T1/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3042, "eliminated": true },
+        { "target": "T1/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.0981, "eliminated": true },
+        { "target": "T1/ben_popular/basic-auth@3.0.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.2178, "eliminated": true },
+        { "target": "T2/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3222, "eliminated": true },
+        { "target": "T2/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.2359, "eliminated": true },
+        { "target": "T3/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3042, "eliminated": true },
+        { "target": "T3/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.0981, "eliminated": true },
+        { "target": "T3/ben_popular/basic-auth@3.0.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.2178, "eliminated": true },
+        { "target": "T3/ben_popular/form-data-lite@1.0.4", "stage2_verdict": "BENIGN", "malicious_prob": 0.1613, "eliminated": true },
+        { "target": "T4/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3042, "eliminated": true },
+        { "target": "T4/ben_longtail/timezone-name-offsets@1.0.2", "stage2_verdict": "MALICIOUS", "malicious_prob": 0.601, "eliminated": false },
+        { "target": "T4/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.0981, "eliminated": true },
+        { "target": "T4/ben_longtail/yaml-fm@0.1.3", "stage2_verdict": "BENIGN", "malicious_prob": 0.05, "eliminated": true },
+        { "target": "T4/ben_popular/basic-auth@3.0.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.2178, "eliminated": true },
+        { "target": "T4/ben_popular/robot3@1.4.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3799, "eliminated": true }
+      ]
+    },
+    "standalone_stage2_v2_on_v6_tiers": {
+      "v6_test": {
+        "T1": { "benign_fpr": 0.0, "benign_specificity": 1.0, "malware_recall": 0.833333 },
+        "T2": { "benign_fpr": 0.026667, "benign_specificity": 0.973333, "malware_recall": 0.5625 },
+        "T3": { "benign_fpr": 0.0, "benign_specificity": 1.0, "malware_recall": 0.833333 },
+        "T4": { "benign_fpr": 0.0, "benign_specificity": 1.0, "malware_recall": 0.833333 }
+      },
+      "v6_validation": {
+        "T1": { "benign_fpr": 0.075, "benign_specificity": 0.925, "malware_recall": 0.90 },
+        "T2": { "benign_fpr": 0.083333, "benign_specificity": 0.916667, "malware_recall": 0.68 },
+        "T3": { "benign_fpr": 0.075, "benign_specificity": 0.925, "malware_recall": 0.90 },
+        "T4": { "benign_fpr": 0.058333, "benign_specificity": 0.941667, "malware_recall": 0.90 }
+      }
+    }
   }
 }
