@@ -70,7 +70,7 @@ PackGuard/
 ├── experiments/v4/             # v4 renamed/mangled benchmark: T1-T4 transforms, results
 ├── experiments/v5/             # v5 two-mode design: known v4c2 mode and new-campaign mode
 ├── experiments/v6/             # v6 known mode: benign veto, payload files, repeat collapsing
-├── docs/                       # Design notes and stage-1 suggestions
+├── docs/                       # Running guide, folder layout, design notes and suggestions
 ├── scripts/build-windows.ps1   # Native Windows build (zig + static liblzma)
 ├── Makefile                    # Linux/macOS build
 ├── Dockerfile                  # Containerised scanner build
@@ -91,6 +91,10 @@ PackGuard/
 | GPU | Only for training (e.g. free Google Colab T4). Detection runs on CPU. |
 
 ## Getting started
+
+> **First time here?** [`docs/running-guide.md`](docs/running-guide.md) walks through the whole
+> setup in order: tools, scanner build, reference sets, Rust CLI, stage 2, a first scan and the
+> output. The steps below are the short version of the same path.
 
 ### 1. Install a C toolchain and liblzma
 
