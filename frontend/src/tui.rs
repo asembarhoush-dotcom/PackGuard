@@ -33,6 +33,8 @@ enum Entry {
     EditScanner,
     EditThreads,
     EditReports,
+    ToggleStage2,
+    EditStage2Model,
     RunScan,
     ResultsMenu,
     Help,
@@ -54,6 +56,7 @@ enum Field {
     Scanner,
     Threads,
     Reports,
+    Stage2Model,
 }
 
 struct App {
@@ -299,6 +302,18 @@ fn main_items(opts: &Options) -> Vec<(String, Entry)> {
     );
     let threads = format!("({}) Worker threads", opts.threads);
     let reports = format!("({}) Report directory", option_text(&opts.reports));
+    let stage2 = if opts.stage2 {
+        "[*] Stage 2 filter".to_string()
+    } else {
+        "[ ] Stage 2 filter".to_string()
+    };
+    let stage2_model = format!(
+        "({}) Stage 2 model directory",
+        opts.stage2_model
+            .as_ref()
+            .map(|path| truncate(&clean(&path.display().to_string()), 48))
+            .unwrap_or_else(|| "auto".to_string())
+    );
 
     vec![
         (mode, Entry::ModeMenu),
@@ -309,6 +324,8 @@ fn main_items(opts: &Options) -> Vec<(String, Entry)> {
         (scanner, Entry::EditScanner),
         (threads, Entry::EditThreads),
         (reports, Entry::EditReports),
+        (stage2, Entry::ToggleStage2),
+        (stage2_model, Entry::EditStage2Model),
         ("--- Actions ---".to_string(), Entry::Separator),
         ("Run scan".to_string(), Entry::RunScan),
         ("View results  --->".to_string(), Entry::ResultsMenu),
@@ -352,12 +369,17 @@ fn result_items(reports: &[Report]) -> Vec<(String, Entry)> {
             (Some(value), false) => value.to_string(),
             (None, _) => "-".to_string(),
         };
+        let stage2 = match report.stage2_prob {
+            Some(value) if report.stage1_flagged => format!("{value:.2}"),
+            _ => "--".to_string(),
+        };
         let row = format!(
-            "{mark} {:<28} {:<10} {:>6} {:>4} {}",
+            "{mark} {:<28} {:<10} {:>6} {:>4} {:>4} {}",
             truncate(&clean(&report.package), 28),
             truncate(&clean(&report.version), 10),
             score,
             primitive,
+            stage2,
             truncate(&clean(&report.primitive_hits), 20)
         );
         items.push((row, Entry::Result(index)));
@@ -385,6 +407,23 @@ fn dispatch_entry(s: &mut Cursive, app: &Arc<Mutex<App>>, entry: Entry) {
         Entry::EditScanner => edit_value(s, app, Field::Scanner),
         Entry::EditThreads => edit_value(s, app, Field::Threads),
         Entry::EditReports => edit_value(s, app, Field::Reports),
+        Entry::ToggleStage2 => {
+            let enabled = {
+                let mut state = app.lock().unwrap();
+                state.opts.stage2 = !state.opts.stage2;
+                state.opts.stage2
+            };
+            render_page(s, app);
+            set_status(
+                s,
+                if enabled {
+                    "stage 2 filter enabled"
+                } else {
+                    "stage 2 filter disabled"
+                },
+            );
+        }
+        Entry::EditStage2Model => edit_value(s, app, Field::Stage2Model),
         Entry::ModeKnown => {
             app.lock().unwrap().opts.mode = "known".to_string();
             go_page(s, app, Page::Main);
@@ -464,6 +503,7 @@ impl Field {
             Field::Scanner => "Scanner binary",
             Field::Threads => "Worker threads",
             Field::Reports => "Report directory",
+            Field::Stage2Model => "Stage 2 model directory",
         }
     }
 
@@ -476,6 +516,7 @@ impl Field {
             Field::Scanner => "scanner binary",
             Field::Threads => "worker threads",
             Field::Reports => "report directory",
+            Field::Stage2Model => "stage 2 model directory",
         }
     }
 
@@ -491,6 +532,9 @@ impl Field {
             Field::Threads => "Worker threads, 1 or more.",
             Field::Reports => {
                 "Keep the JSON reports here instead of a temporary directory. Optional."
+            }
+            Field::Stage2Model => {
+                "Directory with the ONNX model and tokenizer. Empty = model_int8 next to stage2_filter.py."
             }
         }
     }
@@ -509,6 +553,7 @@ impl Field {
             Field::Scanner => opts.packguard.display().to_string(),
             Field::Threads => opts.threads.to_string(),
             Field::Reports => display_empty(&opts.reports),
+            Field::Stage2Model => display_empty(&opts.stage2_model),
         }
     }
 
@@ -550,6 +595,9 @@ impl Field {
             }
             Field::Reports => {
                 opts.reports = path_option(value);
+            }
+            Field::Stage2Model => {
+                opts.stage2_model = path_option(value);
             }
         }
         Ok(())
@@ -709,6 +757,11 @@ fn show_result(s: &mut Cursive, app: &Arc<Mutex<App>>, index: usize) {
     let package = clean(&report.package);
     let version = clean(&report.version);
     let hits = clean(&report.primitive_hits);
+    let stage2 = match (report.stage2_prob, report.stage2_flagged) {
+        (Some(value), Some(true)) if report.stage1_flagged => format!("{value:.4} (confirmed)"),
+        (Some(value), Some(false)) if report.stage1_flagged => format!("{value:.4} (cleared)"),
+        _ => "-".to_string(),
+    };
 
     let body = format!(
         "PACKAGE    {}\n\
@@ -716,6 +769,8 @@ fn show_result(s: &mut Cursive, app: &Arc<Mutex<App>>, index: usize) {
          SCORE      {}\n\
          THRESHOLD  {}\n\
          FLAGGED    {}\n\
+         STAGE 1    {}\n\
+         STAGE 2    {}\n\
          PRIMITIVE  {}\n\
          PRIM. FLAG {}\n\
          HITS       {}",
@@ -728,6 +783,8 @@ fn show_result(s: &mut Cursive, app: &Arc<Mutex<App>>, index: usize) {
         score,
         threshold,
         if report.flagged { "YES" } else { "no" },
+        if report.stage1_flagged { "YES" } else { "no" },
+        stage2,
         primitive,
         if report.primitive_flagged {
             "YES"

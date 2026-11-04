@@ -2,7 +2,7 @@ mod tui;
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,6 +16,10 @@ struct Options {
     packguard: PathBuf,
     threads: usize,
     reports: Option<PathBuf>,
+    stage2: bool,
+    stage2_model: Option<PathBuf>,
+    stage2_python: Option<PathBuf>,
+    stage2_script: Option<PathBuf>,
     tui: bool,
 }
 
@@ -26,6 +30,9 @@ struct Report {
     score: Option<f64>,
     threshold: Option<f64>,
     flagged: bool,
+    stage1_flagged: bool,
+    stage2_prob: Option<f64>,
+    stage2_flagged: Option<bool>,
     primitive_score: Option<u32>,
     primitive_flagged: bool,
     primitive_hits: String,
@@ -49,6 +56,10 @@ fn new_options() -> Options {
         packguard: default_packguard(),
         threads: 4,
         reports: None,
+        stage2: false,
+        stage2_model: None,
+        stage2_python: None,
+        stage2_script: None,
         tui: false,
     }
 }
@@ -66,6 +77,11 @@ fn usage() {
          \x20 --packguard path to the C scanner (default: packguard[.exe] from PATH)\n\
          \x20 --threads   worker threads (default 4)\n\
          \x20 --reports   keep reports in this directory instead of a temp directory\n\
+         \x20 --stage2    pass the reports through the stage 2 ONNX model\n\
+         \x20 --stage2-model  directory holding the ONNX model and tokenizer\n\
+         \x20 --stage2-python Python interpreter for stage 2 (default: v2 venv, then\n\
+         \x20                  python3 on POSIX and python on Windows)\n\
+         \x20 --stage2-script stage2_filter.py (default: found next to this repo)\n\
          \x20 --tui       full-screen terminal interface (make menuconfig style)"
     );
 }
@@ -120,9 +136,34 @@ fn parse_args() -> Result<Options, String> {
                     args.next().ok_or("--reports needs a directory")?,
                 ))
             }
+            "--stage2" => opts.stage2 = true,
+            "--stage2-model" => {
+                opts.stage2_model = Some(PathBuf::from(
+                    args.next().ok_or("--stage2-model needs a directory")?,
+                ))
+            }
+            "--stage2-python" => {
+                opts.stage2_python = Some(PathBuf::from(
+                    args.next().ok_or("--stage2-python needs a path")?,
+                ))
+            }
+            "--stage2-script" => {
+                opts.stage2_script = Some(PathBuf::from(
+                    args.next().ok_or("--stage2-script needs a path")?,
+                ))
+            }
             "--tui" => opts.tui = true,
             other => return Err(format!("unknown argument {other}")),
         }
+    }
+    if !opts.stage2
+        && (opts.stage2_model.is_some()
+            || opts.stage2_python.is_some()
+            || opts.stage2_script.is_some())
+    {
+        return Err(
+            "--stage2-model, --stage2-python and --stage2-script need --stage2".to_string(),
+        );
     }
     if !opts.tui {
         if opts.refs.is_none() {
@@ -169,6 +210,140 @@ fn report_directory(opts: &Options) -> (PathBuf, bool) {
         env::temp_dir().join(format!("packguard-cli-{}-{}", std::process::id(), stamp)),
         true,
     )
+}
+
+fn default_stage2_script() -> Option<PathBuf> {
+    let relative = PathBuf::from("stage 2 LLM Model")
+        .join("v2")
+        .join("stage2_filter.py");
+    let mut roots = Vec::new();
+    if let Ok(executable) = env::current_exe() {
+        let mut current = executable.parent().map(|value| value.to_path_buf());
+        while let Some(path) = current {
+            roots.push(path.clone());
+            current = path.parent().map(|value| value.to_path_buf());
+        }
+    }
+    if let Ok(directory) = env::current_dir() {
+        let mut current = Some(directory);
+        while let Some(path) = current {
+            roots.push(path.clone());
+            current = path.parent().map(|value| value.to_path_buf());
+        }
+    }
+    roots
+        .into_iter()
+        .map(|root| root.join(&relative))
+        .find(|path| path.is_file())
+}
+
+fn stage2_script(opts: &Options) -> Result<PathBuf, String> {
+    if let Some(script) = &opts.stage2_script {
+        if !script.is_file() {
+            return Err(format!("cannot find --stage2-script {}", script.display()));
+        }
+        return Ok(script.clone());
+    }
+    default_stage2_script()
+        .ok_or_else(|| "cannot find stage2_filter.py; pass --stage2-script <path>".to_string())
+}
+
+fn stage2_model(opts: &Options, script: &Path) -> PathBuf {
+    if let Some(model) = &opts.stage2_model {
+        return model.clone();
+    }
+    script
+        .parent()
+        .map(|directory| directory.join("model_int8"))
+        .unwrap_or_else(|| PathBuf::from("model_int8"))
+}
+
+fn stage2_python(opts: &Options, script: &Path) -> PathBuf {
+    if let Some(python) = &opts.stage2_python {
+        return python.clone();
+    }
+    if let Some(directory) = script.parent() {
+        let venv = directory.join(".venv-stage2");
+        for candidate in [
+            venv.join("bin").join("python"),
+            venv.join("Scripts").join("python.exe"),
+        ] {
+            if candidate.is_file() {
+                return candidate;
+            }
+        }
+    }
+    if cfg!(windows) {
+        PathBuf::from("python")
+    } else {
+        PathBuf::from("python3")
+    }
+}
+
+fn run_stage2(
+    opts: &Options,
+    reports_dir: &Path,
+    progress: &mut dyn FnMut(&str),
+) -> Result<(), String> {
+    let script = stage2_script(opts)?;
+    let python = stage2_python(opts, &script);
+    let model = stage2_model(opts, &script);
+    if !model.is_dir() {
+        return Err(format!(
+            "stage 2 model directory {} does not exist; pass --stage2-model <dir> \
+             or run stage 2 LLM Model/v2/install_model.sh",
+            model.display()
+        ));
+    }
+
+    progress(&format!(
+        "Running stage 2 on the reports in {} with {} ...",
+        reports_dir.display(),
+        model.display()
+    ));
+    let output = Command::new(&python)
+        .arg(&script)
+        .arg("--reports")
+        .arg(reports_dir)
+        .arg("--out-dir")
+        .arg(reports_dir)
+        .arg("--model-dir")
+        .arg(&model)
+        .arg("--threads")
+        .arg(opts.threads.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("cannot run {}: {error}", python.display()))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        let code = output.status.code().unwrap_or(-1);
+        return Err(if detail.is_empty() {
+            format!("stage 2 exited with {code}")
+        } else {
+            format!("stage 2 exited with {code}:\n{detail}")
+        });
+    }
+    Ok(())
+}
+
+fn read_reports(reports_dir: &Path) -> Result<Vec<Report>, String> {
+    let entries = fs::read_dir(reports_dir)
+        .map_err(|error| format!("cannot read {}: {error}", reports_dir.display()))?;
+    let mut reports = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        if let Ok(text) = fs::read_to_string(&path) {
+            if let Some(report) = parse_report(&text) {
+                reports.push(report);
+            }
+        }
+    }
+    Ok(reports)
 }
 
 fn run_scan(opts: &Options, progress: &mut dyn FnMut(&str)) -> Result<Vec<Report>, String> {
@@ -230,22 +405,48 @@ fn run_scan(opts: &Options, progress: &mut dyn FnMut(&str)) -> Result<Vec<Report
         ));
     }
 
-    let mut reports = Vec::new();
-    let entries = fs::read_dir(&reports_dir)
-        .map_err(|error| format!("cannot read {}: {error}", reports_dir.display()))?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("json") {
-            continue;
-        }
-        if let Ok(text) = fs::read_to_string(&path) {
-            if let Some(report) = parse_report(&text) {
-                reports.push(report);
+    let stage1 = if opts.stage2 {
+        match read_reports(&reports_dir) {
+            Ok(reports) => Some(reports),
+            Err(error) => {
+                if temporary {
+                    let _ = fs::remove_dir_all(&reports_dir);
+                }
+                return Err(error);
             }
         }
+    } else {
+        None
+    };
+    if stage1.is_some() {
+        if let Err(error) = run_stage2(opts, &reports_dir, progress) {
+            if temporary {
+                let _ = fs::remove_dir_all(&reports_dir);
+            }
+            return Err(error);
+        }
     }
+    let mut reports = match read_reports(&reports_dir) {
+        Ok(reports) => reports,
+        Err(error) => {
+            if temporary {
+                let _ = fs::remove_dir_all(&reports_dir);
+            }
+            return Err(error);
+        }
+    };
     if temporary {
         let _ = fs::remove_dir_all(&reports_dir);
+    }
+    if let Some(stage1) = &stage1 {
+        for report in &mut reports {
+            if let Some(previous) = stage1
+                .iter()
+                .find(|value| value.package == report.package && value.version == report.version)
+            {
+                report.stage1_flagged = previous.flagged;
+            }
+        }
     }
     if reports.is_empty() {
         return Err("packguard produced no reports".to_string());
@@ -373,12 +574,16 @@ fn field_bool(json: &str, key: &str) -> Option<bool> {
 }
 
 fn parse_report(json: &str) -> Option<Report> {
+    let flagged = field_bool(json, "flagged").unwrap_or(false);
     Some(Report {
         package: field_string(json, "package")?,
         version: field_string(json, "version").unwrap_or_default(),
         score: field_number(json, "score"),
         threshold: field_number(json, "threshold"),
-        flagged: field_bool(json, "flagged").unwrap_or(false),
+        flagged,
+        stage1_flagged: flagged,
+        stage2_prob: field_number(json, "stage2_prob"),
+        stage2_flagged: field_bool(json, "stage2_flagged"),
         primitive_score: field_u32(json, "primitive_score"),
         primitive_flagged: field_bool(json, "primitive_flagged").unwrap_or(false),
         primitive_hits: field_string(json, "primitive_hits").unwrap_or_default(),
@@ -394,7 +599,7 @@ fn truncate(text: &str, width: usize) -> String {
     out
 }
 
-fn print_table(reports: &[Report], mode: &str) {
+fn print_table(reports: &[Report], mode: &str, stage2: bool) {
     let threshold = reports
         .iter()
         .find_map(|report| report.threshold)
@@ -403,11 +608,14 @@ fn print_table(reports: &[Report], mode: &str) {
         "\nMODE {mode}  threshold {threshold:.2}  packages {}",
         reports.len()
     );
+    if stage2 {
+        println!("Stage 2 filter on (probability column, - = not flagged by stage 1)");
+    }
     println!(
-        "{:<44} {:<16} {:>8} {:>5} {:>7} HITS",
-        "PACKAGE", "VERSION", "SCORE", "PRIM", "FLAGGED"
+        "{:<44} {:<16} {:>8} {:>5} {:>6} {:>7} HITS",
+        "PACKAGE", "VERSION", "SCORE", "PRIM", "S2", "FLAGGED"
     );
-    println!("{}", "-".repeat(100));
+    println!("{}", "-".repeat(108));
     for report in reports {
         let score = report
             .score
@@ -418,12 +626,17 @@ fn print_table(reports: &[Report], mode: &str) {
             (Some(value), false) => value.to_string(),
             (None, _) => "-".to_string(),
         };
+        let stage2_prob = match report.stage2_prob {
+            Some(value) if report.stage1_flagged => format!("{value:.3}"),
+            _ => "-".to_string(),
+        };
         println!(
-            "{:<44} {:<16} {:>8} {:>5} {:>7} {}",
+            "{:<44} {:<16} {:>8} {:>5} {:>6} {:>7} {}",
             truncate(&report.package, 44),
             truncate(&report.version, 16),
             score,
             primitive,
+            stage2_prob,
             if report.flagged { "YES" } else { "no" },
             report.primitive_hits
         );
@@ -434,6 +647,20 @@ fn print_table(reports: &[Report], mode: &str) {
         reports.len(),
         100.0 * flagged as f64 / reports.len() as f64
     );
+    if stage2 {
+        let stage1_flagged = reports
+            .iter()
+            .filter(|report| report.stage1_flagged)
+            .count();
+        let confirmed = reports
+            .iter()
+            .filter(|report| report.stage1_flagged && report.stage2_flagged == Some(true))
+            .count();
+        println!(
+            "STAGE 1 flagged {stage1_flagged}/{}   STAGE 2 confirmed {confirmed}/{stage1_flagged}",
+            reports.len()
+        );
+    }
 }
 
 fn main() {
@@ -449,7 +676,7 @@ fn main() {
         tui::run(opts)
     } else {
         run_scan(&opts, &mut |line| println!("{line}"))
-            .map(|reports| print_table(&reports, &opts.mode))
+            .map(|reports| print_table(&reports, &opts.mode, opts.stage2))
     };
     if let Err(error) = result {
         eprintln!("packguard-cli: {error}");
@@ -494,6 +721,25 @@ mod tests {
     }
 
     #[test]
+    fn parses_stage2_fields() {
+        let json = r#"{"package":"p","version":"1.0.0","score":0.4,"flagged":true,
+            "stage2_prob":0.913,"stage2_flagged":false}"#;
+        let report = parse_report(json).unwrap();
+        assert_eq!(report.stage2_prob, Some(0.913));
+        assert_eq!(report.stage2_flagged, Some(false));
+        assert!(report.stage1_flagged);
+    }
+
+    #[test]
+    fn stage2_fields_are_optional() {
+        let json = r#"{"package":"p","version":"1","flagged":false}"#;
+        let report = parse_report(json).unwrap();
+        assert_eq!(report.stage2_prob, None);
+        assert_eq!(report.stage2_flagged, None);
+        assert!(!report.stage1_flagged);
+    }
+
+    #[test]
     fn parses_escaped_strings() {
         let json = r#"{"package":"a\"b\\c","version":"1"}"#;
         let report = parse_report(json).unwrap();
@@ -510,6 +756,12 @@ mod tests {
     fn truncates_long_names() {
         assert_eq!(truncate("abcdefghij", 5), "abcd~");
         assert_eq!(truncate("abc", 5), "abc");
+    }
+
+    #[test]
+    fn finds_stage2_script_next_to_the_repository() {
+        let script = default_stage2_script().expect("stage2_filter.py should be found");
+        assert!(script.ends_with(PathBuf::from("v2").join("stage2_filter.py")));
     }
 
     #[test]

