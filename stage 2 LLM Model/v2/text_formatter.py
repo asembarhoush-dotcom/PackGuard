@@ -15,6 +15,53 @@ RE_INLINE_BASE64 = re.compile(
     r'(?:Buffer\.from\s*\(\s*["\']([A-Za-z0-9+/=]{24,})["\']\s*,\s*["\']base64["\']\s*\)|atob\s*\(\s*["\']([A-Za-z0-9+/=]{24,})["\']\s*\))'
 )
 RE_REPEATED_OBF_TOKEN = re.compile(r"([^\s()[\]{}.,;:=+\-*/\"'`]{5,24}?)\1{2,}")
+RE_T2_IDENT = re.compile(r"\bv(?:0|1|2|3|4|5|6|7|8|9|1\d)\b")
+RE_T2_RANDOM_STRING = re.compile(r'(["\'])([a-z0-9]{14,})\1')
+RE_REQUIRE_CALL = re.compile(r"\brequire\s*\(\s*([\"'][^\"']*[\"'])?\s*\)")
+RE_PROCESS_ACCESS = re.compile(r"\bprocess\s*\.\s*[A-Za-z0-9_$]+")
+RE_BUFFER_ACCESS = re.compile(r"\bBuffer\s*\.\s*[A-Za-z0-9_$]+")
+RE_EVAL_OR_FUNC = re.compile(r"\b(?:eval\s*\(|new\s+Function\b|Function\s*\()")
+RE_EXEC_SPAWN = re.compile(r"\b(?:child_process|execSync|execFile|spawnSync|exec\s*\(|spawn\s*\()", re.I)
+RE_NET_EXFIL = re.compile(
+    r"\b(?:https?\.request|dns\.lookup|dns\.resolve|net\.Socket|fetch\s*\(|axios|webhook|discord|telegram|oast|burp|interact\.sh|pipedream|requestbin)\b",
+    re.I,
+)
+
+
+def _extract_structural_summary(text: str) -> str:
+    """
+    Extract an obfuscation-invariant structural signature from preserved JS keywords
+    (`require`, `process`, `Buffer`, `eval`, `global`) and API patterns.
+    Survives `T2` identifier/string mangling (`mangle.py` preserves `require`, `process`,
+    `Buffer`, `eval`, `global`, `module`, `exports`) and distinguishes pure data/lookup
+    tables (`character-entities-legacy`, `timezone-name-offsets`, `mime-db`) from active
+    process/network/eval payloads.
+    """
+    req_matches = RE_REQUIRE_CALL.findall(text)
+    req_count = len(req_matches)
+    req_lens = [str(len(m) - 2) for m in req_matches[:8] if len(m) >= 2]
+    proc_count = len(RE_PROCESS_ACCESS.findall(text))
+    buf_count = len(RE_BUFFER_ACCESS.findall(text))
+    eval_count = len(RE_EVAL_OR_FUNC.findall(text))
+    exec_count = len(RE_EXEC_SPAWN.findall(text))
+    net_count = len(RE_NET_EXFIL.findall(text))
+    t2_ident_hits = len(RE_T2_IDENT.findall(text[:4096]))
+    is_t2_style = t2_ident_hits >= 6
+
+    is_pure_data = (
+        req_count == 0
+        and proc_count == 0
+        and buf_count == 0
+        and eval_count == 0
+        and exec_count == 0
+        and net_count == 0
+    )
+    req_len_tag = ",".join(req_lens) if req_lens else "none"
+    return (
+        f"// [SIGNALS: t2_mangled={int(is_t2_style)} pure_data={int(is_pure_data)} "
+        f"require={req_count}(lens:{req_len_tag}) process={proc_count} "
+        f"buffer={buf_count} eval={eval_count} exec={exec_count} net={net_count}]"
+    )
 
 
 def _try_decode_base64_utf8(b64_str: str) -> str:
@@ -83,6 +130,15 @@ def clean_and_unfold_js(text: str) -> str:
         lines = [(line[2:] if line.startswith("  ") else line) for line in text.splitlines()]
         text = "\n".join(lines)
 
+    struct_sig = _extract_structural_summary(text)
+
+    # Compress T2 random alphanumeric string literals so they do not exhaust BPE tokens
+    if len(RE_T2_IDENT.findall(text[:4096])) >= 5:
+        text = RE_T2_RANDOM_STRING.sub(
+            lambda m: f'{m.group(1)}<t2str_{len(m.group(2))}>{m.group(1)}',
+            text,
+        )
+
     # Step 4: Collapse consecutive identical lines (e.g. template padding) keeping at most 2
     out_lines: List[str] = []
     prev_line = None
@@ -101,6 +157,8 @@ def clean_and_unfold_js(text: str) -> str:
     cleaned = "\n".join(out_lines).strip()
     if inline_decoded:
         cleaned += "\n/* [DECODED_INLINE_BASE64] */\n" + "\n".join(inline_decoded)
+    if cleaned and not cleaned.startswith("// [SIGNALS:"):
+        cleaned = f"{struct_sig}\n{cleaned}"
     return cleaned
 
 

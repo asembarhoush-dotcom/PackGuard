@@ -29,7 +29,7 @@ class PackGuardStage2Model:
     def __init__(
         self,
         model_dir: Path,
-        max_length: int = 512,
+        max_length: int = 1024,
         threshold: Optional[float] = None,
         threads: int = 4,
     ) -> None:

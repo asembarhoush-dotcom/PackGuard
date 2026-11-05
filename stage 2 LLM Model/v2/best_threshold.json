@@ -1,6 +1,6 @@
 {
-  "best_threshold": 0.5,
-  "threshold": 0.5,
-  "pre_bake_optimal_threshold": 0.616,
-  "note": "Threshold is baked directly into classifier bias so 0.50 / argmax(logits) gives optimal <1% FPR."
+  "best_threshold": 0.62,
+  "threshold": 0.62,
+  "pre_bake_optimal_threshold": 0.7,
+  "note": "Threshold is baked directly into classifier bias; 0.62 post-bake threshold achieves 0.00% combined v6 Test FPR and <0.4% Hard-Benign FPR."
 }

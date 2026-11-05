@@ -4,6 +4,7 @@ import concurrent.futures
 import csv
 import io
 import json
+import multiprocessing
 import os
 import random
 import re
@@ -66,6 +67,8 @@ LIVE_NPM_HARD_BENIGN_QUERIES = [
     "base64", "webpack", "esbuild", "rollup", "babel",
     "terser", "postinstall", "node-gyp", "prebuild", "dotenv",
     "fs-extra", "chokidar", "glob", "minimist", "commander",
+    "yargs", "gulp", "character-entities", "timezone", "mime-db",
+    "wasm32-wasi", "napi-rs", "ora", "picocolors", "leaflet",
 ]
 
 
@@ -759,16 +762,161 @@ def write_jsonl(records: List[Dict[str, Any]], path: Path) -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
+def _worker_train_mal(task: Tuple[int, str, int]) -> List[Dict[str, Any]]:
+    idx, pdir_str, seed = task
+    pdir = Path(pdir_str)
+    local_rng = random.Random(seed + idx * 31)
+    out: List[Dict[str, Any]] = []
+    rec_t0 = build_package_record(pdir, label=1, tier="T0", category="mal_T0", rng=local_rng)
+    if rec_t0:
+        out.append(rec_t0)
+    # Generate T2 for 100% of malicious packages so identifier/string mangled payloads have full recall
+    rec_t2 = build_package_record(pdir, label=1, tier="T2", category="mal_T2", rng=local_rng)
+    if rec_t2:
+        out.append(rec_t2)
+    other_tier = ("T1", "T3", "T4")[idx % 3]
+    rec_tx = build_package_record(pdir, label=1, tier=other_tier, category=f"mal_{other_tier}", rng=local_rng)
+    if rec_tx:
+        out.append(rec_tx)
+    if idx % 2 == 0:
+        raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
+        rec_raw = build_package_record(
+            pdir, label=1, tier=raw_tier, category="mal_raw", rng=local_rng, raw_mode=True
+        )
+        if rec_raw:
+            out.append(rec_raw)
+    return out
+
+
+def _worker_train_ben(task: Tuple[int, str, str, int]) -> List[Dict[str, Any]]:
+    idx, pdir_str, src_cat, seed = task
+    pdir = Path(pdir_str)
+    local_rng = random.Random(seed + 100000 + idx * 37)
+    out: List[Dict[str, Any]] = []
+    inject_script = (
+        BENIGN_INSTALL_SCRIPTS[idx % len(BENIGN_INSTALL_SCRIPTS)] if (idx % 3 == 0) else None
+    )
+    cat_name = "ben_scripts" if inject_script else src_cat
+    rec_t0 = build_package_record(
+        pdir,
+        label=0,
+        tier="T0",
+        category=cat_name,
+        rng=local_rng,
+        inject_benign_script=inject_script,
+    )
+    if rec_t0:
+        out.append(rec_t0)
+
+    # Generate T2 for 100% of benign packages so T2 benign packages never trigger false alarms
+    rec_t2 = build_package_record(pdir, label=0, tier="T2", category="ben_T2", rng=local_rng)
+    if rec_t2:
+        out.append(rec_t2)
+
+    other_tier = ("T1", "T3", "T4")[idx % 3]
+    rec_tx = build_package_record(pdir, label=0, tier=other_tier, category=f"ben_{other_tier}", rng=local_rng)
+    if rec_tx:
+        out.append(rec_tx)
+
+    if idx % 2 == 0:
+        raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
+        rec_raw = build_package_record(
+            pdir,
+            label=0,
+            tier=raw_tier,
+            category="ben_raw",
+            rng=local_rng,
+            inject_benign_script=inject_script,
+            raw_mode=True,
+        )
+        if rec_raw:
+            out.append(rec_raw)
+    return out
+
+
+def _worker_val_mal(task: Tuple[int, str, int]) -> List[Dict[str, Any]]:
+    idx, pdir_str, seed = task
+    pdir = Path(pdir_str)
+    local_rng = random.Random(seed + 200000 + idx * 41)
+    out: List[Dict[str, Any]] = []
+    rec_t0 = build_package_record(pdir, label=1, tier="T0", category="mal_T0", rng=local_rng)
+    if rec_t0:
+        out.append(rec_t0)
+    tier_tx = ("T1", "T2", "T3", "T4")[idx % 4]
+    rec_tx = build_package_record(pdir, label=1, tier=tier_tx, category=f"mal_{tier_tx}", rng=local_rng)
+    if rec_tx:
+        out.append(rec_tx)
+    if idx % 2 == 0:
+        raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
+        rec_raw = build_package_record(
+            pdir, label=1, tier=raw_tier, category="mal_raw", rng=local_rng, raw_mode=True
+        )
+        if rec_raw:
+            out.append(rec_raw)
+    return out
+
+
+def _worker_val_ben(
+    task: Tuple[int, str, str, int],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    idx, pdir_str, src_cat, seed = task
+    pdir = Path(pdir_str)
+    local_rng = random.Random(seed + 300000 + idx * 43)
+    val_out: List[Dict[str, Any]] = []
+    hard_out: List[Dict[str, Any]] = []
+    inject_script = (
+        BENIGN_INSTALL_SCRIPTS[idx % len(BENIGN_INSTALL_SCRIPTS)] if (idx % 4 == 0) else None
+    )
+    cat_name = "ben_scripts" if inject_script else src_cat
+    rec_t0 = build_package_record(
+        pdir,
+        label=0,
+        tier="T0",
+        category=cat_name,
+        rng=local_rng,
+        inject_benign_script=inject_script,
+    )
+    if rec_t0:
+        val_out.append(rec_t0)
+        if inject_script or src_cat == "ben_live_hard":
+            hard_out.append(rec_t0)
+
+    all_obf_tiers = ("T1", "T2", "T3", "T4")
+    for tier_tx in all_obf_tiers:
+        rec_tx = build_package_record(pdir, label=0, tier=tier_tx, category=f"ben_{tier_tx}", rng=local_rng)
+        if rec_tx:
+            hard_out.append(rec_tx)
+            if tier_tx == all_obf_tiers[idx % 4]:
+                val_out.append(rec_tx)
+
+    if idx % 2 == 0:
+        raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
+        rec_raw = build_package_record(
+            pdir,
+            label=0,
+            tier=raw_tier,
+            category="ben_raw",
+            rng=local_rng,
+            inject_benign_script=inject_script,
+            raw_mode=True,
+        )
+        if rec_raw:
+            val_out.append(rec_raw)
+            hard_out.append(rec_raw)
+    return val_out, hard_out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="High-speed dataset harvester + T0-T4 & Raw multi-format builder for PackGuard Stage 2 v2."
+        description="High-speed 48-vCPU dataset harvester + T0-T4 & Raw multi-format builder for PackGuard Stage 2 v2."
     )
     parser.add_argument("--repo_root", type=str, default="../..")
     parser.add_argument("--out_dir", type=str, default="./data_v2")
-    parser.add_argument("--max_malware", type=int, default=4500)
-    parser.add_argument("--max_benign", type=int, default=5500)
+    parser.add_argument("--max_malware", type=int, default=6500)
+    parser.add_argument("--max_benign", type=int, default=6500)
     parser.add_argument("--val_ratio", type=float, default=0.12)
-    parser.add_argument("--workers", type=int, default=96)
+    parser.add_argument("--workers", type=int, default=128)
+    parser.add_argument("--cpu_cores", type=int, default=min(48, os.cpu_count() or 16))
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -787,12 +935,16 @@ def main() -> None:
         seed=args.seed,
     )
 
-    if ben_cache_file.exists():
-        ben_specs = [tuple(x) for x in json.loads(ben_cache_file.read_text(encoding="utf-8"))]
-    elif raw_ben_dir.exists() and len([p for p in raw_ben_dir.iterdir() if p.is_dir()]) >= int(args.max_benign * 0.9):
+    if raw_ben_dir.exists() and len([p for p in raw_ben_dir.iterdir() if p.is_dir()]) >= int(args.max_benign * 0.92):
         existing_ben_dirs = [p for p in sorted(raw_ben_dir.iterdir()) if p.is_dir() and any(p.iterdir())]
         print(f"[Stage2 v2 Dataset] Reusing {len(existing_ben_dirs)} cached benign packages in {raw_ben_dir}", flush=True)
-        ben_items = [(p, "ben_live_hard" if idx % 4 == 0 else ("ben_longtail" if idx % 3 == 0 else "ben_popular")) for idx, p in enumerate(existing_ben_dirs[:args.max_benign])]
+        ben_items = [
+            (
+                p,
+                "ben_live_hard" if idx % 4 == 0 else ("ben_longtail" if idx % 3 == 0 else "ben_popular"),
+            )
+            for idx, p in enumerate(existing_ben_dirs[: args.max_benign])
+        ]
         ben_specs = []
     else:
         ben_specs = collect_benign_package_specs(
@@ -802,8 +954,6 @@ def main() -> None:
         )
         out_dir.mkdir(parents=True, exist_ok=True)
         ben_cache_file.write_text(json.dumps(ben_specs), encoding="utf-8")
-
-    if ben_specs:
         print(f"[Stage2 v2 Dataset] Collected {len(ben_specs)} total benign npm package specs.", flush=True)
         ben_items = download_benign_corpus(
             specs=ben_specs,
@@ -828,124 +978,31 @@ def main() -> None:
     val_records: List[Dict[str, Any]] = []
     hard_benign_val_records: List[Dict[str, Any]] = []
 
-    all_obf_tiers = ("T1", "T2", "T3", "T4")
+    print(
+        f"[Stage2 v2 Dataset] Building T0-T4 + Raw JSONL records across {args.cpu_cores} CPU cores in parallel...",
+        flush=True,
+    )
+    with multiprocessing.Pool(processes=args.cpu_cores) as pool:
+        mal_train_tasks = [(idx, str(p), args.seed) for idx, p in enumerate(train_mal_dirs)]
+        for batch in pool.imap_unordered(_worker_train_mal, mal_train_tasks, chunksize=32):
+            train_records.extend(batch)
 
-    # 1. Build Training Set: T0 + T1/T2/T3/T4 + Raw Unformatted mode + Benign Install Scripts
-    for idx, pdir in enumerate(train_mal_dirs):
-        rec_t0 = build_package_record(pdir, label=1, tier="T0", category="mal_T0", rng=rng)
-        if rec_t0:
-            train_records.append(rec_t0)
-        tier_choice = all_obf_tiers[idx % 4]
-        rec_tx = build_package_record(
-            pdir, label=1, tier=tier_choice, category=f"mal_{tier_choice}", rng=rng
-        )
-        if rec_tx:
-            train_records.append(rec_tx)
-        if idx % 2 == 0:
-            raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
-            rec_raw = build_package_record(
-                pdir, label=1, tier=raw_tier, category="mal_raw", rng=rng, raw_mode=True
-            )
-            if rec_raw:
-                train_records.append(rec_raw)
+        ben_train_tasks = [
+            (idx, str(p), cat, args.seed) for idx, (p, cat) in enumerate(train_ben_items)
+        ]
+        for batch in pool.imap_unordered(_worker_train_ben, ben_train_tasks, chunksize=32):
+            train_records.extend(batch)
 
-    for idx, (pdir, src_cat) in enumerate(train_ben_items):
-        inject_script = (
-            BENIGN_INSTALL_SCRIPTS[idx % len(BENIGN_INSTALL_SCRIPTS)] if (idx % 3 == 0) else None
-        )
-        cat_name = "ben_scripts" if inject_script else src_cat
-        rec_t0 = build_package_record(
-            pdir,
-            label=0,
-            tier="T0",
-            category=cat_name,
-            rng=rng,
-            inject_benign_script=inject_script,
-        )
-        if rec_t0:
-            train_records.append(rec_t0)
+        mal_val_tasks = [(idx, str(p), args.seed) for idx, p in enumerate(val_mal_dirs)]
+        for batch in pool.imap_unordered(_worker_val_mal, mal_val_tasks, chunksize=32):
+            val_records.extend(batch)
 
-        tier_choice = all_obf_tiers[idx % 4]
-        rec_tx = build_package_record(
-            pdir, label=0, tier=tier_choice, category=f"ben_{tier_choice}", rng=rng
-        )
-        if rec_tx:
-            train_records.append(rec_tx)
-
-        if idx % 2 == 0:
-            raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
-            rec_raw = build_package_record(
-                pdir,
-                label=0,
-                tier=raw_tier,
-                category="ben_raw",
-                rng=rng,
-                inject_benign_script=inject_script,
-                raw_mode=True,
-            )
-            if rec_raw:
-                train_records.append(rec_raw)
-
-    # 2. Build Held-Out Validation Set across ALL package types & tiers (T0, T1, T2, T3, T4, Raw)
-    for idx, pdir in enumerate(val_mal_dirs):
-        rec_t0 = build_package_record(pdir, label=1, tier="T0", category="mal_T0", rng=rng)
-        if rec_t0:
-            val_records.append(rec_t0)
-        tier_tx = all_obf_tiers[idx % 4]
-        rec_tx = build_package_record(
-            pdir, label=1, tier=tier_tx, category=f"mal_{tier_tx}", rng=rng
-        )
-        if rec_tx:
-            val_records.append(rec_tx)
-        if idx % 2 == 0:
-            raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
-            rec_raw = build_package_record(
-                pdir, label=1, tier=raw_tier, category="mal_raw", rng=rng, raw_mode=True
-            )
-            if rec_raw:
-                val_records.append(rec_raw)
-
-    for idx, (pdir, src_cat) in enumerate(val_ben_items):
-        inject_script = (
-            BENIGN_INSTALL_SCRIPTS[idx % len(BENIGN_INSTALL_SCRIPTS)] if (idx % 4 == 0) else None
-        )
-        cat_name = "ben_scripts" if inject_script else src_cat
-        rec_t0 = build_package_record(
-            pdir,
-            label=0,
-            tier="T0",
-            category=cat_name,
-            rng=rng,
-            inject_benign_script=inject_script,
-        )
-        if rec_t0:
-            val_records.append(rec_t0)
-            if inject_script or src_cat == "ben_live_hard":
-                hard_benign_val_records.append(rec_t0)
-
-        for tier_tx in all_obf_tiers:
-            rec_tx = build_package_record(
-                pdir, label=0, tier=tier_tx, category=f"ben_{tier_tx}", rng=rng
-            )
-            if rec_tx:
-                hard_benign_val_records.append(rec_tx)
-                if tier_tx == all_obf_tiers[idx % 4]:
-                    val_records.append(rec_tx)
-
-        if idx % 2 == 0:
-            raw_tier = ("T0", "T1", "T2", "T3", "T4")[idx % 5]
-            rec_raw = build_package_record(
-                pdir,
-                label=0,
-                tier=raw_tier,
-                category="ben_raw",
-                rng=rng,
-                inject_benign_script=inject_script,
-                raw_mode=True,
-            )
-            if rec_raw:
-                val_records.append(rec_raw)
-                hard_benign_val_records.append(rec_raw)
+        ben_val_tasks = [
+            (idx, str(p), cat, args.seed) for idx, (p, cat) in enumerate(val_ben_items)
+        ]
+        for v_batch, h_batch in pool.imap_unordered(_worker_val_ben, ben_val_tasks, chunksize=32):
+            val_records.extend(v_batch)
+            hard_benign_val_records.extend(h_batch)
 
     rng.shuffle(train_records)
     rng.shuffle(val_records)

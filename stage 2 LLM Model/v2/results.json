@@ -1,16 +1,16 @@
 {
   "version": "v2",
   "base_model": "answerdotai/ModernBERT-base",
-  "hardware": "NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB VRAM, sm_120, 48 vCPUs, CUDA 12.9, PyTorch 2.9.1+cu129)",
-  "precision_mode": "Native bfloat16 + TF32 (Blackwell Tensor Cores)",
+  "hardware": "NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB VRAM, sm_120, 48 vCPUs, 180 GB RAM, CUDA 12.9, PyTorch 2.9.1+cu129)",
+  "precision_mode": "Native bfloat16 + TF32 (Blackwell Tensor Cores, max_length=1024, 100% GPU compute utilization)",
   "timing_summary": {
-    "dataset_harvest_and_download_seconds": 168.4,
-    "suspicion_ranked_jsonl_build_seconds": 25.2,
-    "rtx_pro_6000_bf16_training_seconds": 395.76,
-    "validation_and_hard_benign_eval_seconds": 9.88,
-    "validation_samples_per_second": 603.33,
-    "onnx_export_and_int8_quantization_seconds": 25.63,
-    "total_pipeline_wall_seconds": 421.39,
+    "dataset_harvest_and_download_seconds": 191.5,
+    "suspicion_ranked_jsonl_build_seconds": 61.4,
+    "rtx_pro_6000_bf16_training_seconds": 1637.58,
+    "validation_and_hard_benign_eval_seconds": 28.08,
+    "validation_samples_per_second": 270.61,
+    "onnx_export_and_int8_quantization_seconds": 27.32,
+    "total_pipeline_wall_seconds": 1945.88,
     "cpu_onnx_int8_latency_ms_per_package": {
       "benign_t0_utility_ms": 13.8,
       "benign_install_hook_ms": 12.8,
@@ -20,61 +20,64 @@
     }
   },
   "dataset_summary": {
-    "raw_malicious_packages": 4500,
-    "raw_benign_packages": 5876,
-    "total_raw_packages": 10376,
-    "train_examples": 21693,
-    "train_malicious": 9885,
-    "train_benign": 11808,
-    "validation_examples": 2944,
-    "validation_malicious": 1348,
-    "validation_benign": 1596,
-    "hard_benign_val_examples": 3140,
+    "raw_malicious_packages": 6500,
+    "raw_benign_packages": 6500,
+    "total_raw_packages": 13000,
+    "train_examples": 39717,
+    "train_malicious": 19890,
+    "train_benign": 19827,
+    "validation_examples": 3866,
+    "validation_malicious": 1950,
+    "validation_benign": 1916,
+    "hard_benign_val_examples": 3732,
+    "total_examples": 47315,
+    "max_seq_length": 1024,
+    "t2_coverage_ratio": 1.0,
     "benign_sources": [
       "experiments/v6/results/benign_refs_manifest.json (popular + longtail)",
       "experiments/v6/results/validation_manifest_benign.json",
       "experiments/v3/results/packages.csv (including ben_scripts)",
       "experiments/v1/results/packages.csv",
-      "1,200 live npm registry hard-benign packages (CLI, child-process, webpack, esbuild, postinstall, node-gyp, crypto)",
-      "All 5 tiers (T0, T1, T2 identifier/string mangled, T3 dead-code padded, T4 base64 eval wrapped) + raw unformatted mode"
+      "1,844 live npm registry hard-benign packages (CLI, child-process, webpack, esbuild, postinstall, node-gyp, crypto, pure-data, NAPI-RS/WASM)",
+      "100% of all 5 tiers (T0, T1, T2 identifier/string mangled, T3 dead-code padded, T4 base64 eval wrapped) + raw unformatted mode + explicit [SIGNALS] header"
     ],
     "malicious_sources": [
-      "data/v2/malware_js_0.zip .. malware_js_f.zip + data/v1/malware_js_0.zip .. malware_js_f.zip (4,500 unique malicious packages across T0, T1, T2, T3, T4, and raw unformatted mode)"
+      "data/v2/malware_js_0.zip .. malware_js_f.zip + data/v1/malware_js_0.zip .. malware_js_f.zip (6,500 malicious packages across 100% of T0, T1, T2, T3, T4, and raw unformatted mode)"
     ]
   },
   "overall_metrics": {
     "raw_eval_at_pre_bake_0_50": {
-      "eval_loss": 0.190146,
-      "eval_accuracy": 0.896739,
-      "eval_precision": 0.979779,
-      "eval_recall": 0.790801,
-      "eval_f1": 0.875205,
-      "eval_false_alarm_rate": 0.013784,
-      "eval_specificity": 0.986216,
-      "eval_roc_auc": 0.963669,
-      "true_positives": 1066,
-      "false_positives": 22,
-      "true_negatives": 1574,
-      "false_negatives": 282
+      "eval_loss": 0.163689,
+      "eval_accuracy": 0.917998,
+      "eval_precision": 0.983419,
+      "eval_recall": 0.851795,
+      "eval_f1": 0.912888,
+      "eval_false_alarm_rate": 0.014614,
+      "eval_specificity": 0.985386,
+      "eval_roc_auc": 0.972546,
+      "true_positives": 1661,
+      "false_positives": 28,
+      "true_negatives": 1888,
+      "false_negatives": 289
     },
     "calibrated_and_baked_into_classifier_bias": {
-      "pre_bake_optimal_threshold": 0.616,
-      "baked_bias_delta": 0.472604,
+      "pre_bake_optimal_threshold": 0.7,
+      "baked_bias_delta": 0.847298,
       "post_bake_threshold": 0.5,
-      "accuracy": 0.889606,
-      "precision": 0.99325,
-      "recall": 0.764095,
-      "f1": 0.863732,
-      "false_alarm_rate": 0.004386,
-      "specificity": 0.995614,
-      "hard_benign_false_alarm_rate": 0.006051,
-      "hard_benign_specificity": 0.993949,
-      "true_positives": 1030,
-      "false_positives": 7,
-      "true_negatives": 1589,
-      "false_negatives": 318,
-      "hard_benign_total": 3140,
-      "hard_benign_false_positives": 19
+      "accuracy": 0.890585,
+      "precision": 0.993536,
+      "recall": 0.788205,
+      "f1": 0.879039,
+      "false_alarm_rate": 0.005219,
+      "specificity": 0.994781,
+      "hard_benign_false_alarm_rate": 0.004823,
+      "hard_benign_specificity": 0.995177,
+      "true_positives": 1537,
+      "false_positives": 10,
+      "true_negatives": 1906,
+      "false_negatives": 413,
+      "hard_benign_total": 3732,
+      "hard_benign_false_positives": 18
     }
   },
   "per_category_and_tier_breakdown": {
@@ -96,209 +99,209 @@
     },
     "ben_live_hard": {
       "type": "benign",
-      "total": 113,
-      "false_positives": 0,
-      "true_negatives": 113,
-      "false_alarm_rate": 0.0,
-      "specificity": 1.0
+      "total": 176,
+      "false_positives": 3,
+      "true_negatives": 173,
+      "false_alarm_rate": 0.017045,
+      "specificity": 0.982955
     },
     "ben_scripts": {
       "type": "benign",
-      "total": 165,
-      "false_positives": 0,
-      "true_negatives": 165,
-      "false_alarm_rate": 0.0,
-      "specificity": 1.0
+      "total": 211,
+      "false_positives": 1,
+      "true_negatives": 210,
+      "false_alarm_rate": 0.004739,
+      "specificity": 0.995261
     },
     "ben_T1": {
       "type": "benign",
-      "total": 161,
-      "false_positives": 0,
-      "true_negatives": 161,
-      "false_alarm_rate": 0.0,
-      "specificity": 1.0
+      "total": 187,
+      "false_positives": 1,
+      "true_negatives": 186,
+      "false_alarm_rate": 0.005348,
+      "specificity": 0.994652
     },
     "ben_T2": {
       "type": "benign",
-      "total": 159,
-      "false_positives": 4,
-      "true_negatives": 155,
-      "false_alarm_rate": 0.025157,
-      "specificity": 0.974843
+      "total": 187,
+      "false_positives": 1,
+      "true_negatives": 186,
+      "false_alarm_rate": 0.005348,
+      "specificity": 0.994652
     },
     "ben_T3": {
       "type": "benign",
-      "total": 157,
+      "total": 186,
       "false_positives": 0,
-      "true_negatives": 157,
+      "true_negatives": 186,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "ben_T4": {
       "type": "benign",
-      "total": 158,
-      "false_positives": 0,
-      "true_negatives": 158,
-      "false_alarm_rate": 0.0,
-      "specificity": 1.0
+      "total": 185,
+      "false_positives": 1,
+      "true_negatives": 184,
+      "false_alarm_rate": 0.005405,
+      "specificity": 0.994595
     },
     "ben_raw": {
       "type": "benign",
-      "total": 322,
+      "total": 423,
       "false_positives": 0,
-      "true_negatives": 322,
+      "true_negatives": 423,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "mal_T0": {
       "type": "malicious",
-      "total": 539,
-      "true_positives": 425,
-      "false_negatives": 114,
-      "recall": 0.788497
+      "total": 780,
+      "true_positives": 642,
+      "false_negatives": 138,
+      "recall": 0.823077
     },
     "mal_T1": {
       "type": "malicious",
-      "total": 135,
-      "true_positives": 103,
-      "false_negatives": 32,
-      "recall": 0.762963
+      "total": 195,
+      "true_positives": 165,
+      "false_negatives": 30,
+      "recall": 0.846154
     },
     "mal_T2": {
       "type": "malicious",
-      "total": 134,
-      "true_positives": 88,
-      "false_negatives": 46,
-      "recall": 0.656716
+      "total": 195,
+      "true_positives": 135,
+      "false_negatives": 60,
+      "recall": 0.692308
     },
     "mal_T3": {
       "type": "malicious",
-      "total": 135,
-      "true_positives": 111,
-      "false_negatives": 24,
-      "recall": 0.822222
+      "total": 195,
+      "true_positives": 156,
+      "false_negatives": 39,
+      "recall": 0.80
     },
     "mal_T4": {
       "type": "malicious",
-      "total": 135,
-      "true_positives": 106,
-      "false_negatives": 29,
-      "recall": 0.785185
+      "total": 195,
+      "true_positives": 158,
+      "false_negatives": 37,
+      "recall": 0.810256
     },
     "mal_raw": {
       "type": "malicious",
-      "total": 270,
-      "true_positives": 197,
-      "false_negatives": 73,
-      "recall": 0.72963
+      "total": 390,
+      "true_positives": 281,
+      "false_negatives": 109,
+      "recall": 0.720513
     },
     "tier_T0": {
       "type": "mixed",
-      "total": 1178,
-      "true_positives": 425,
-      "false_positives": 3,
-      "true_negatives": 636,
-      "false_negatives": 114,
-      "recall": 0.788497,
-      "false_alarm_rate": 0.004695,
-      "specificity": 0.995305
+      "total": 1528,
+      "true_positives": 642,
+      "false_positives": 7,
+      "true_negatives": 741,
+      "false_negatives": 138,
+      "recall": 0.823077,
+      "false_alarm_rate": 0.009358,
+      "specificity": 0.990642
     },
     "tier_T0_raw": {
       "type": "mixed",
-      "total": 118,
-      "true_positives": 42,
+      "total": 162,
+      "true_positives": 61,
       "false_positives": 0,
-      "true_negatives": 64,
-      "false_negatives": 12,
-      "recall": 0.777778,
+      "true_negatives": 84,
+      "false_negatives": 17,
+      "recall": 0.782051,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "tier_T1": {
       "type": "mixed",
-      "total": 296,
-      "true_positives": 103,
-      "false_positives": 0,
-      "true_negatives": 161,
-      "false_negatives": 32,
-      "recall": 0.762963,
-      "false_alarm_rate": 0.0,
-      "specificity": 1.0
+      "total": 382,
+      "true_positives": 165,
+      "false_positives": 1,
+      "true_negatives": 186,
+      "false_negatives": 30,
+      "recall": 0.846154,
+      "false_alarm_rate": 0.005348,
+      "specificity": 0.994652
     },
     "tier_T1_raw": {
       "type": "mixed",
-      "total": 118,
-      "true_positives": 42,
+      "total": 163,
+      "true_positives": 64,
       "false_positives": 0,
-      "true_negatives": 64,
-      "false_negatives": 12,
-      "recall": 0.777778,
+      "true_negatives": 85,
+      "false_negatives": 14,
+      "recall": 0.820513,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "tier_T2": {
       "type": "mixed",
-      "total": 293,
-      "true_positives": 88,
-      "false_positives": 4,
-      "true_negatives": 155,
-      "false_negatives": 46,
-      "recall": 0.656716,
-      "false_alarm_rate": 0.025157,
-      "specificity": 0.974843
+      "total": 382,
+      "true_positives": 135,
+      "false_positives": 1,
+      "true_negatives": 186,
+      "false_negatives": 60,
+      "recall": 0.692308,
+      "false_alarm_rate": 0.005348,
+      "specificity": 0.994652
     },
     "tier_T2_raw": {
       "type": "mixed",
-      "total": 120,
-      "true_positives": 29,
+      "total": 162,
+      "true_positives": 31,
       "false_positives": 0,
-      "true_negatives": 66,
-      "false_negatives": 25,
-      "recall": 0.537037,
+      "true_negatives": 84,
+      "false_negatives": 47,
+      "recall": 0.397436,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "tier_T3": {
       "type": "mixed",
-      "total": 292,
-      "true_positives": 111,
+      "total": 381,
+      "true_positives": 156,
       "false_positives": 0,
-      "true_negatives": 157,
-      "false_negatives": 24,
-      "recall": 0.822222,
+      "true_negatives": 186,
+      "false_negatives": 39,
+      "recall": 0.80,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "tier_T3_raw": {
       "type": "mixed",
-      "total": 118,
-      "true_positives": 43,
+      "total": 163,
+      "true_positives": 62,
       "false_positives": 0,
-      "true_negatives": 64,
-      "false_negatives": 11,
-      "recall": 0.796296,
+      "true_negatives": 85,
+      "false_negatives": 16,
+      "recall": 0.794872,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     },
     "tier_T4": {
       "type": "mixed",
-      "total": 293,
-      "true_positives": 106,
-      "false_positives": 0,
-      "true_negatives": 158,
-      "false_negatives": 29,
-      "recall": 0.785185,
-      "false_alarm_rate": 0.0,
-      "specificity": 1.0
+      "total": 380,
+      "true_positives": 158,
+      "false_positives": 1,
+      "true_negatives": 184,
+      "false_negatives": 37,
+      "recall": 0.810256,
+      "false_alarm_rate": 0.005405,
+      "specificity": 0.994595
     },
     "tier_T4_raw": {
       "type": "mixed",
-      "total": 118,
-      "true_positives": 41,
+      "total": 163,
+      "true_positives": 63,
       "false_positives": 0,
-      "true_negatives": 64,
-      "false_negatives": 13,
-      "recall": 0.759259,
+      "true_negatives": 85,
+      "false_negatives": 15,
+      "recall": 0.807692,
       "false_alarm_rate": 0.0,
       "specificity": 1.0
     }
@@ -307,9 +310,64 @@
     "fp32_size_mb": 571.3,
     "int8_size_mb": 254.3,
     "tar_gz_size_mb": 146.1,
-    "tar_gz_sha256": "e8bf700375bd827c487bcf9c4a37bc89dce5c3b7f52c3446f0cd1e6c7cf7c5b3",
+    "tar_gz_sha256": "29a4c87f79335d10f4103bc27c07ebda6f91f8a301eabbf1fa6dff61bac4bd62",
     "max_logit_diff": 0.4172,
     "top1_match": true,
     "self_test_passed": "4/4"
+  },
+  "v6_benchmark_evaluation": {
+    "stage1_v6_test_false_alarms_eliminated": {
+      "total_stage1_false_alarms_q64": 5,
+      "total_stage1_false_alarms_q256": 3,
+      "eliminated_by_stage2_v2_q64": 5,
+      "eliminated_by_stage2_v2_q256": 3,
+      "combined_v6_plus_stage2_v2_test_false_alarms": 0,
+      "combined_v6_plus_stage2_v2_test_fpr": 0.0,
+      "targets": [
+        { "target": "T1/ben_popular/mime-db@1.54.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.1254, "eliminated": true },
+        { "target": "T2/ben_popular/mime-db@1.54.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.1284, "eliminated": true },
+        { "target": "T2/ben_popular/hasown@2.0.2", "stage2_verdict": "BENIGN", "malicious_prob": 0.2791, "eliminated": true },
+        { "target": "T4/ben_longtail/ethiopic-date@1.0.4", "stage2_verdict": "BENIGN", "malicious_prob": 0.4412, "eliminated": true },
+        { "target": "T4/ben_longtail/date-format-php@1.0.2", "stage2_verdict": "BENIGN", "malicious_prob": 0.2026, "eliminated": true }
+      ]
+    },
+    "stage1_v6_validation_false_alarms_eliminated": {
+      "total_stage1_false_alarms": 15,
+      "eliminated_by_stage2_v2": 14,
+      "remaining_false_alarms": 1,
+      "stage1_alone_val_fpr": 0.03125,
+      "combined_v6_plus_stage2_v2_val_fpr": 0.002083,
+      "targets": [
+        { "target": "T1/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.5987, "eliminated": true },
+        { "target": "T1/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.1347, "eliminated": true },
+        { "target": "T1/ben_popular/basic-auth@3.0.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.5615, "eliminated": true },
+        { "target": "T2/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3548, "eliminated": true },
+        { "target": "T2/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.2052, "eliminated": true },
+        { "target": "T3/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.5987, "eliminated": true },
+        { "target": "T3/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.1347, "eliminated": true },
+        { "target": "T3/ben_popular/basic-auth@3.0.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.5615, "eliminated": true },
+        { "target": "T3/ben_popular/form-data-lite@1.0.4", "stage2_verdict": "BENIGN", "malicious_prob": 0.4058, "eliminated": true },
+        { "target": "T4/ben_longtail/react-intl-currency-input-fork@0.2.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.5987, "eliminated": true },
+        { "target": "T4/ben_longtail/timezone-name-offsets@1.0.2", "stage2_verdict": "MALICIOUS", "malicious_prob": 0.7722, "eliminated": false },
+        { "target": "T4/ben_longtail/vue-pretty-logger@0.9.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.1347, "eliminated": true },
+        { "target": "T4/ben_longtail/yaml-fm@0.1.3", "stage2_verdict": "BENIGN", "malicious_prob": 0.1522, "eliminated": true },
+        { "target": "T4/ben_popular/basic-auth@3.0.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.5615, "eliminated": true },
+        { "target": "T4/ben_popular/robot3@1.4.0", "stage2_verdict": "BENIGN", "malicious_prob": 0.3373, "eliminated": true }
+      ]
+    },
+    "standalone_stage2_v2_on_v6_tiers": {
+      "v6_test": {
+        "T1": { "benign_fpr": 0.0, "benign_specificity": 1.0, "malware_recall": 0.833333 },
+        "T2": { "benign_fpr": 0.026667, "benign_specificity": 0.973333, "malware_recall": 0.5625 },
+        "T3": { "benign_fpr": 0.0, "benign_specificity": 1.0, "malware_recall": 0.833333 },
+        "T4": { "benign_fpr": 0.0, "benign_specificity": 1.0, "malware_recall": 0.833333 }
+      },
+      "v6_validation": {
+        "T1": { "benign_fpr": 0.075, "benign_specificity": 0.925, "malware_recall": 0.90 },
+        "T2": { "benign_fpr": 0.083333, "benign_specificity": 0.916667, "malware_recall": 0.68 },
+        "T3": { "benign_fpr": 0.075, "benign_specificity": 0.925, "malware_recall": 0.90 },
+        "T4": { "benign_fpr": 0.058333, "benign_specificity": 0.941667, "malware_recall": 0.90 }
+      }
+    }
   }
 }
