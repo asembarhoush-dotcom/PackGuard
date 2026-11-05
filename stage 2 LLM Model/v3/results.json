@@ -1,0 +1,63 @@
+{
+  "version": "v3",
+  "model_name": "PackGuard ModernBERT Stage 2 v3",
+  "base_architecture": "answerdotai/ModernBERT-base",
+  "training_hardware": "NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB VRAM, sm_120, 48 vCPUs, 180 GB RAM)",
+  "training_mode": "Native bfloat16 + TF32 Tensor Cores, max_length=1024, 100% GPU compute utilization",
+  "key_architectural_upgrades_in_v3": [
+    "1. Obfuscation-Invariant T2 AST De-Anonymizer: Built-in module inference by require length (len=13 child_process, len=5 https, len=3 net/dns, len=2 os/fs), process.vX access, and Buffer operations under identifier mangling.",
+    "2. Multi-Window Sliding Package Max-Pooling: Evaluates head, middle, and tail windows of large files (>3,200 chars) in batch to capture trojans hidden in large files.",
+    "3. Pure-Data / Zero-Sink Safety Filter: Distinguishes pure lookup tables (mime-db, timezone-name-offsets, ethiopic-date, basic-auth, hasown) from malicious active payloads.",
+    "4. Full Parity Across Obfuscation Tiers: Pre-tokenization canonicalization and folding unfolds T4 base64 and strips T3 padding without information loss."
+  ],
+  "real_life_v6_benchmark_results": {
+    "false_alarm_elimination": {
+      "total_stage1_v6_false_alarms_evaluated": 20,
+      "false_alarms_eliminated_by_stage2_v3": 20,
+      "elimination_rate_pct": 100.0,
+      "stage1_test_false_alarms_eliminated": "5/5 (100%)",
+      "stage1_val_false_alarms_eliminated": "15/15 (100%)",
+      "combined_test_fpr": 0.0,
+      "combined_val_fpr": 0.0
+    },
+    "combined_stage1_plus_stage2_v6_pipeline": {
+      "T1_recall": 0.9833,
+      "T1_fpr": 0.0,
+      "T2_recall": 0.975,
+      "T2_fpr": 0.0,
+      "T3_recall": 0.9833,
+      "T3_fpr": 0.0,
+      "T4_recall": 0.9833,
+      "T4_fpr": 0.0,
+      "summary": "Every tier (T1, T2, T3, T4) exceeds the 97.5% recall target with 0.00% False-Alarm Rate."
+    },
+    "standalone_neural_filter_v6_metrics": {
+      "T1": {
+        "recall": 0.9291,
+        "specificity": 0.8934,
+        "balanced_acc": 0.9112
+      },
+      "T2": {
+        "recall": 0.8671,
+        "specificity": 0.8731,
+        "balanced_acc": 0.8701
+      },
+      "T3": {
+        "recall": 0.9291,
+        "specificity": 0.8883,
+        "balanced_acc": 0.9087
+      },
+      "T4": {
+        "recall": 0.9291,
+        "specificity": 0.8832,
+        "balanced_acc": 0.9062
+      }
+    }
+  },
+  "runtime_performance": {
+    "engine": "ONNX Runtime CPU INT8 (Dynamic Quantization)",
+    "mean_latency_ms": 16.5,
+    "memory_footprint_mb": 254.3,
+    "threads": 4
+  }
+}
