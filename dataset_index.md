@@ -182,6 +182,28 @@ Built 2026-10-29 to tune the v6 rule without touching the v4 benchmark (the test
 | Transforms | `experiments/v4/scripts/mangle.py --seed 20261030`: T1–T4 as in v4, 960 targets (480 malware variants, 480 benign controls) |
 | Scripts | `select_val_malware.py` (decrypts DataDog zips in memory, writes read-only files), `build_benign.py` |
 
+## v7 benign npm corpus
+
+Downloaded on 2026-11-05 on the VPS by `experiments/v7/scripts/fetch_benign_npm.py`, driven by the `npm` CLI (`npm search` and `npm pack`). This is the raw input for the reference set below; see [`experiments/v7/`](experiments/v7/README.md).
+
+| | |
+|---|---|
+| Location | VPS only: `~/packguard-data/v7/raw/npm/tarballs/<name>@<version>.tgz`, the registry tarballs unchanged (245 MiB). `~/packguard-data/v7/raw/npm/index.json` records name, version, tarball URL, sizes and source per tarball; `search/` caches the `npm search` results; `downloads.json` caches the monthly download counts. Not committed. |
+| Size | 2,821 tarballs: 1,348 `popular`, 1,473 `longtail` |
+| `popular` | Random latest versions from the `npm-high-impact` 1.13.0 list (seed 20261105), not deprecated |
+| `longtail` | The last 120 hits of each of the 167 keywords in `npm search`, at most 2,000 downloads a month, not deprecated; 16,999 candidates, 1,668 under the cap |
+| Excluded | The 12,819 package names in DataDog `malicious_intent`, taken from the repository's Git tree listing and cached as `~/packguard-data/datadog/tree_malicious_intent.json` |
+
+## v7 benign reference set
+
+| | |
+|---|---|
+| Location | VPS only: `~/packguard-data/v7/benign_refs/<name>@<version>/<path with / as __>`; manifest in `~/packguard-data/v7/benign_refs_manifest.json`. Not committed. |
+| Built | 2026-11-05 by `experiments/v6/scripts/build_benign.py` with the validation split turned off, so no package is set aside |
+| Size | 2,549 packages (1,215 popular, 1,334 long-tail), 29,654 files, 70.4 MiB of JavaScript |
+| Filter | `.js`, `.cjs`, `.mjs` outside `node_modules`; files of 64 KiB or less, smallest first, at most 128 KiB per package; files identical to one already kept (whitespace ignored) are dropped (4,795); 201 packages had no JavaScript and 71 were left empty by the deduplication |
+| Use | `packguard -B <dir>`: a chunk only counts when it is closer to malware than to this set by the margin |
+
 ## Not yet collected
 
 - DataDog `compromised_lib` samples: real libraries with injected code, need a diff against the clean version.
@@ -189,4 +211,4 @@ Built 2026-10-29 to tune the v6 rule without touching the v4 benchmark (the test
 - Backstabber's Knife Collection and MalwareBench: access on request.
 - MalOSS: the repository has package-name lists only; samples come from the authors.
 - OpenSSF malicious-packages: reports only, used to confirm live-scan detections.
-- A larger benign test set, including packages over 32 KiB. The v6 raw corpus (6,014 packages) now feeds the benign references and validation, but the v4 benchmark still has only 58 benign packages per tier, so its false-alarm rate is a rough estimate.
+- A larger benign test set, including packages over 32 KiB. The v6 raw corpus (6,014 packages) and the v7 corpus (2,821 packages) feed the benign references, but the v4 benchmark still has only 58 benign packages per tier, so its false-alarm rate is a rough estimate.

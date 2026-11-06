@@ -23,6 +23,10 @@
 
 ## Quick Start
 ```bash
+# Install the Python dependencies once (Debian/Ubuntu need a venv: PEP 668)
+python3 -m venv ~/pg-venv && ~/pg-venv/bin/pip install numpy onnxruntime tokenizers
+export PATH=~/pg-venv/bin:$PATH
+
 # Install model (Linux/macOS)
 bash "stage 2 LLM Model/v3/install_model.sh"
 
