@@ -1,0 +1,14 @@
+# Private Server Control Dashboard (kept local-only, excluded from v4 PR)
+web_dashboard.py
+
+# Binary checkpoints & live runtime telemetry files
+checkpoints/
+model_int8/
+*.onnx
+*.pt
+*.safetensors
+*.tar.gz
+harvest_status.json
+training_status.json
+lightweight_status.json
+onnx_export_manifest.json

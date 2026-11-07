@@ -1,0 +1,57 @@
+{
+  "version": "v4",
+  "model_name": "PackGuard-v4-Nano-CPU-INT8 (Distilled + Rank-128 SVD + INT8 ONNX)",
+  "teacher_architecture": "answerdotai/ModernBERT-base (22 Layers, 768d, 149.6M params, 5-Head Multi-Task)",
+  "student_architecture": "PackGuardNanoV4MultiTask (4 Layers, 384d, Rank-128 SVD Factorized Embeddings, 12.17M params, 5-Head Multi-Task)",
+  "execution_device": "100% CPU-ONLY (ONNX Runtime CPUExecutionProvider — Zero GPU Required)",
+  "compression_metrics": {
+    "teacher_fp32_size_mb": 286.6,
+    "v3_int8_size_mb": 149.8,
+    "v4_nano_fp32_size_mb": 46.53,
+    "v4_nano_int8_size_mb": 11.83,
+    "size_reduction_vs_teacher_pct": 95.9,
+    "size_reduction_vs_v3_int8_ratio": "12.7x smaller"
+  },
+  "key_architectural_upgrades_in_v4": [
+    "1. 100% CPU-Only Ultra-Lightweight Nano-INT8 Model (11.83 MB): Distilled from the 22-layer ModernBERT-v4 Teacher into a 4-layer, 384d Student with Rank-128 SVD Factorized Vocabulary Embeddings and Dynamic INT8 ONNX Quantization.",
+    "2. Two-Stage Fast-Path AST Gate (< 0.45 ms Mean CPU Latency): Resolves unambiguous pure-data / zero-sink benign packages and explicit multi-sink trojans in < 0.20 ms on CPU, invoking the 3.79 ms 4-Layer INT8 ONNX neural pass only on ambiguous/mangled packages.",
+    "3. Pre-Tokenization AST Constant-Folder (T1-T8 Obfuscation Immunity): Decodes Hex (\\xNN) and Unicode (\\uNNNN) escapes, folds split string concatenations, and inlines rotated string-lookup arrays before scoring.",
+    "4. Multi-Task 5-Head MITRE ATT&CK Attribution: Simultaneously predicts Binary Malware probability plus T1059.007 (Execution), T1552 (Credential Theft), T1048 (Exfiltration), and T1078 (Lifecycle Persistence).",
+    "5. 100% Stage 1 False Alarm Elimination (20/20 on experiments/v6/): Zero false alarms on pure data tables, auth utilities (basic-auth), and benign dev hooks (husky, tsc)."
+  ],
+  "real_life_v6_and_t1_t8_benchmark_results": {
+    "false_alarm_elimination": {
+      "total_stage1_v6_false_alarms_evaluated": 20,
+      "false_alarms_eliminated_by_stage2_v4": 20,
+      "elimination_rate_pct": 100.0,
+      "stage1_test_false_alarms_eliminated": "5/5 (100%)",
+      "stage1_val_false_alarms_eliminated": "15/15 (100%)",
+      "combined_test_fpr": 0.0,
+      "combined_val_fpr": 0.0
+    },
+    "combined_stage1_plus_stage2_pipeline": {
+      "T1_recall": 0.9833,
+      "T1_fpr": 0.0,
+      "T2_recall": 0.975,
+      "T2_fpr": 0.0,
+      "T3_recall": 0.9833,
+      "T3_fpr": 0.0,
+      "T4_recall": 0.9833,
+      "T4_fpr": 0.0,
+      "T5_hex_unicode_recall": 1.0,
+      "T6_string_array_recall": 1.0,
+      "T7_split_concat_recall": 1.0,
+      "T8_comment_dilution_recall": 1.0,
+      "mitre_4head_attribution_accuracy": 1.0
+    }
+  },
+  "runtime_performance_cpu_only": {
+    "engine": "ONNX Runtime CPUExecutionProvider (INT8 Dynamic Quantization + Fast-Path AST Gate)",
+    "gpu_required": false,
+    "onnx_neural_pass_cpu_ms": 3.79,
+    "mean_end_to_end_cpu_latency_ms": 0.42,
+    "ram_footprint_mb": 28.4,
+    "model_file_size_mb": 11.83,
+    "threads": 4
+  }
+}
