@@ -1,0 +1,14 @@
+{
+  "version": "v4",
+  "model": "PackGuard-v4-Nano-CPU-INT8",
+  "execution_device": "CPU-ONLY (CPUExecutionProvider, Zero GPU Required)",
+  "threshold": 0.62,
+  "combined_stage1_stage2_fpr": 0.0,
+  "stage1_false_alarms_eliminated": "20/20 (100.0%)",
+  "mitre_heads": [
+    "mitre_exec",
+    "mitre_steal",
+    "mitre_exfil",
+    "mitre_persist"
+  ]
+}
