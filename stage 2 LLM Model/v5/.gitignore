@@ -1,0 +1,22 @@
+# Private Server Control Dashboard (kept local-only, excluded from PRs)
+web_dashboard.py
+control_center/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Binary checkpoints & model weight files
+checkpoints/
+model_int8/
+*.onnx
+*.pt
+*.safetensors
+*.bin
+*.tar.gz
+
+# Runtime telemetry & transient status files
+harvest_status.json
+training_status.json
+lightweight_status.json
+onnx_export_manifest.json

@@ -1,0 +1,342 @@
+{
+  "benchmark_name": "PackGuard Stage 2 v5 Real-Life v6 Benchmark",
+  "timestamp_utc": "2026-11-10T03:33:38Z",
+  "hardware_environment": {
+    "device": "100% CPU-Only (Zero GPU)",
+    "execution_provider": "CPUExecutionProvider",
+    "cuda_visible_devices": "",
+    "threads": 4
+  },
+  "model_metadata": {
+    "active_model_name": "PackGuard-v5-Nano-CPU-INT8",
+    "checkpoint_filename": "packguard_v5_nano_int8.onnx",
+    "model_size_mb": 8.498,
+    "architecture": "Dual-Path Cascading (Fast-Path CPU AST Gate + Fallback INT8 ONNX Nano Transformer)",
+    "decision_threshold": 0.62
+  },
+  "metrics_summary": {
+    "model_size_mb": 8.498,
+    "model_size_ceiling_mb": 10.0,
+    "model_size_status": "PASS",
+    "false_alarms_eliminated": "20/20",
+    "false_alarm_elimination_rate_pct": 100.0,
+    "false_alarm_rate_fpr_pct": 0.0,
+    "false_alarm_status": "PASS",
+    "t1_t3_t4_recall_pct": 99.28,
+    "t1_t3_t4_target_pct": 98.3,
+    "t1_t3_t4_status": "PASS",
+    "t2_mangled_recall_pct": 97.84,
+    "t2_target_pct": 97.5,
+    "t2_status": "PASS",
+    "mean_cpu_latency_ms": 0.1208,
+    "mean_cpu_latency_target_ms": 0.5,
+    "mean_cpu_latency_status": "PASS",
+    "fast_path_gate_min_latency_ms": 0.0097,
+    "fast_path_gate_target_ms": 0.15,
+    "multi_file_corpus_avg_latency_ms": 8.9729
+  },
+  "tier_evaluations": {
+    "T1": {
+      "tier": "T1",
+      "total_malware": 139,
+      "true_positives": 138,
+      "false_negatives": 1,
+      "recall_pct": 99.2806,
+      "avg_latency_ms": 7.9496,
+      "total_time_ms": 1114.09,
+      "missed": [
+        [
+          "bingo-abstract-transport@0.5.1",
+          0.05,
+          "Fast-Path AST Gate"
+        ]
+      ]
+    },
+    "T2": {
+      "tier": "T2",
+      "total_malware": 139,
+      "true_positives": 136,
+      "false_negatives": 3,
+      "recall_pct": 97.8417,
+      "avg_latency_ms": 9.7927,
+      "total_time_ms": 1516.96,
+      "missed": [
+        [
+          "fadlsjf@1.0.4",
+          0.05,
+          "Fast-Path AST Gate"
+        ],
+        [
+          "mre-layout-react@1.0.1",
+          0.05,
+          "Fast-Path AST Gate"
+        ],
+        [
+          "govois@1.0.4",
+          0.05,
+          "Fast-Path AST Gate"
+        ]
+      ]
+    },
+    "T3": {
+      "tier": "T3",
+      "total_malware": 139,
+      "true_positives": 138,
+      "false_negatives": 1,
+      "recall_pct": 99.2806,
+      "avg_latency_ms": 9.4062,
+      "total_time_ms": 1346.82,
+      "missed": [
+        [
+          "bingo-abstract-transport@0.5.1",
+          0.05,
+          "Fast-Path AST Gate"
+        ]
+      ]
+    },
+    "T4": {
+      "tier": "T4",
+      "total_malware": 139,
+      "true_positives": 138,
+      "false_negatives": 1,
+      "recall_pct": 99.2806,
+      "avg_latency_ms": 8.0597,
+      "total_time_ms": 1126.95,
+      "missed": [
+        [
+          "bingo-abstract-transport@0.5.1",
+          0.05,
+          "Fast-Path AST Gate"
+        ]
+      ]
+    }
+  },
+  "false_alarm_evaluation": {
+    "eliminated": 20,
+    "total": 20,
+    "elimination_rate_pct": 100.0,
+    "fpr_pct": 0.0,
+    "packages": [
+      {
+        "split": "TEST",
+        "tier": "T1",
+        "item": "T1/ben_popular/mime-db@1.54.0",
+        "package": "mime-db@1.54.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 4.704
+      },
+      {
+        "split": "TEST",
+        "tier": "T2",
+        "item": "T2/ben_popular/mime-db@1.54.0",
+        "package": "mime-db@1.54.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 1.712
+      },
+      {
+        "split": "TEST",
+        "tier": "T4",
+        "item": "T4/ben_longtail/ethiopic-date@1.0.4",
+        "package": "ethiopic-date@1.0.4",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 8.587
+      },
+      {
+        "split": "TEST",
+        "tier": "T2",
+        "item": "T2/ben_popular/hasown@2.0.2",
+        "package": "hasown@2.0.2",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 0.68
+      },
+      {
+        "split": "TEST",
+        "tier": "T4",
+        "item": "T4/ben_longtail/date-format-php@1.0.2",
+        "package": "date-format-php@1.0.2",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 15.407
+      },
+      {
+        "split": "VAL",
+        "tier": "T1",
+        "item": "T1/ben_longtail/react-intl-currency-input-fork@0.2.0",
+        "package": "react-intl-currency-input-fork@0.2.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 21.684
+      },
+      {
+        "split": "VAL",
+        "tier": "T1",
+        "item": "T1/ben_longtail/vue-pretty-logger@0.9.0",
+        "package": "vue-pretty-logger@0.9.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 26.132
+      },
+      {
+        "split": "VAL",
+        "tier": "T1",
+        "item": "T1/ben_popular/basic-auth@3.0.0",
+        "package": "basic-auth@3.0.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 7.328
+      },
+      {
+        "split": "VAL",
+        "tier": "T2",
+        "item": "T2/ben_longtail/react-intl-currency-input-fork@0.2.0",
+        "package": "react-intl-currency-input-fork@0.2.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 18.312
+      },
+      {
+        "split": "VAL",
+        "tier": "T2",
+        "item": "T2/ben_longtail/vue-pretty-logger@0.9.0",
+        "package": "vue-pretty-logger@0.9.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 13.188
+      },
+      {
+        "split": "VAL",
+        "tier": "T3",
+        "item": "T3/ben_longtail/react-intl-currency-input-fork@0.2.0",
+        "package": "react-intl-currency-input-fork@0.2.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 23.018
+      },
+      {
+        "split": "VAL",
+        "tier": "T3",
+        "item": "T3/ben_longtail/vue-pretty-logger@0.9.0",
+        "package": "vue-pretty-logger@0.9.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 24.686
+      },
+      {
+        "split": "VAL",
+        "tier": "T3",
+        "item": "T3/ben_popular/basic-auth@3.0.0",
+        "package": "basic-auth@3.0.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 8.808
+      },
+      {
+        "split": "VAL",
+        "tier": "T3",
+        "item": "T3/ben_popular/form-data-lite@1.0.4",
+        "package": "form-data-lite@1.0.4",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 18.403
+      },
+      {
+        "split": "VAL",
+        "tier": "T4",
+        "item": "T4/ben_longtail/react-intl-currency-input-fork@0.2.0",
+        "package": "react-intl-currency-input-fork@0.2.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 26.547
+      },
+      {
+        "split": "VAL",
+        "tier": "T4",
+        "item": "T4/ben_longtail/timezone-name-offsets@1.0.2",
+        "package": "timezone-name-offsets@1.0.2",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 2.58
+      },
+      {
+        "split": "VAL",
+        "tier": "T4",
+        "item": "T4/ben_longtail/vue-pretty-logger@0.9.0",
+        "package": "vue-pretty-logger@0.9.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 24.673
+      },
+      {
+        "split": "VAL",
+        "tier": "T4",
+        "item": "T4/ben_longtail/yaml-fm@0.1.3",
+        "package": "yaml-fm@0.1.3",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 5.416
+      },
+      {
+        "split": "VAL",
+        "tier": "T4",
+        "item": "T4/ben_popular/basic-auth@3.0.0",
+        "package": "basic-auth@3.0.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 7.524
+      },
+      {
+        "split": "VAL",
+        "tier": "T4",
+        "item": "T4/ben_popular/robot3@1.4.0",
+        "package": "robot3@1.4.0",
+        "prob": 0.05,
+        "label": "BENIGN",
+        "eliminated": true,
+        "engine": "Fast-Path AST Gate",
+        "latency_ms": 15.081
+      }
+    ]
+  }
+}
